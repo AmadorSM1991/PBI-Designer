@@ -4,21 +4,109 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const supabase = require('./supabase');
-const jwt = require('jsonwebtoken'); // <-- MOVER AL INICIO
+const jwt = require('jsonwebtoken');
 
 const authMiddleware = require('./middleware/auth');
-console.log('✅ authMiddleware tipo:', typeof authMiddleware); // Debe decir "function"
+console.log('✅ authMiddleware tipo:', typeof authMiddleware);
 
 const authRoutes = require('./routes/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// CORS: permite el frontend de Vite
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json({ limit: '10mb' }));
 
 // Rutas de autenticación
 app.use('/api/auth', authRoutes);
+
+// -------------------------------------------------------------------
+// Prompt del sistema (definido ANTES de usarlo)
+// -------------------------------------------------------------------
+const AI_SYS = `Eres un arquitecto de dashboards de Power BI. Genera layouts con las siguientes reglas:
+
+1. Usa ÚNICAMENTE los siguientes tipos: kpi, bar, line, pie, table, slicer, nav, header, card, button, image.
+2. Para KPIs, usa SOLO estos labels: "Total Revenue", "Units Sold", "Avg. Deal", "Win Rate %", "Net Revenue", "EBITDA", "Net Margin", "Cash Flow", "Headcount", "Attrition %", "Impressions", "CTR %", "Conversions", "CAC", "ROAS", "Deliveries", "On-Time %".
+3. Disposición típica: header en y=0, nav izquierdo en x=0, luego KPIs en fila (y=70, x comenzando desde 200, cada uno con ancho 180, alto 90, separación 8px).
+4. Gráficos debajo de KPIs (y=170, ancho ~350, alto 200).
+5. Tablas o slicers en la parte inferior (y=380).
+6. Todas las coordenadas deben ser múltiplos de 8 y respetar el canvas de 960x580.
+
+Ejemplo de layout correcto:
+<LAYOUT>{"canvasThemeId":"clean","header":
+{"show":true,"title":"Dashboard","subtitle":"Ventas","height":58,"bgColor":""},
+"navConfig":{"position":"left","style":"static","width":190},
+"elements":[{"id":1,"type":"kpi","x":198,"y":66,"w":180,"h":88,"label":"Total Revenue"},
+{"id":2,"type":"kpi","x":386,"y":66,"w":180,"h":88,"label":"Units Sold"},
+{"id":3,"type":"bar","x":198,"y":162,"w":370,"h":210,"label":"Ventas por Región"},
+{"id":4,"type":"line","x":576,"y":162,"w":376,"h":210,"label":"Tendencia Mensual"}]}
+</LAYOUT>`;
+// -------------------------------------------------------------------
+// Endpoint simple de login (por si authRoutes no lo tiene aún)
+// -------------------------------------------------------------------
+app.post('/api/auth/simple-login', (req, res) => {
+  const userId = '93fa7701-f2cd-4eb3-ae8a-3a174f3cbbe2';
+  const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  res.json({
+    token,
+    user: { id: userId, email: 'dev@example.com', credits: 100000 }
+  });
+});
+
+// -------------------------------------------------------------------
+// Función auxiliar para normalizar un layout (convierte formatos alternativos)
+// -------------------------------------------------------------------
+function normalizeLayout(layout) {
+  if (!layout) return null;
+
+  // Normalizar elementos: convertir width->w, height->h, displayName->label, etc.
+  if (layout.elements && Array.isArray(layout.elements)) {
+    layout.elements = layout.elements.map(el => {
+      // Mapeo de tipos no estándar
+      const typeMap = {
+        "lineChart": "line",
+        "gauge": "kpi",
+        "waterfall": "bar",
+        "scatter": "line",
+        "ribbon": "line",
+        "map": "image",
+        "funnel": "bar"
+      };
+      return {
+        id: el.id || Math.floor(Math.random() * 10000),
+        type: typeMap[el.type] || el.type || "kpi",
+        x: el.x || 0,
+        y: el.y || 0,
+        w: el.w || el.width || 160,
+        h: el.h || el.height || 90,
+        label: el.label || el.displayName || el.fields?.value || "Elemento"
+      };
+    });
+  }
+
+  // Normalizar header
+  if (layout.header) {
+    layout.header = {
+      show: layout.header.show !== undefined ? layout.header.show : true,
+      title: layout.header.title || layout.header.displayName || "Dashboard",
+      subtitle: layout.header.subtitle || "",
+      height: layout.header.height || 58,
+      bgColor: layout.header.bgColor || ""
+    };
+  }
+
+  // Normalizar navConfig
+  if (layout.navConfig) {
+    layout.navConfig = {
+      position: layout.navConfig.position || "left",
+      style: layout.navConfig.style || "static",
+      width: layout.navConfig.width || 190
+    };
+  }
+
+  return layout;
+}
 
 // -------------------------------------------------------------------
 // ENDPOINT: Generar diseños con IA (PROTEGIDO)
@@ -36,40 +124,45 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
       });
     }
 
-    // 2. Construir el prompt combinado
-    const conversation = messages.map(m => `${m.role}: ${m.content}`).join('\n');
-    const fullPrompt = system + '\n\n' + conversation;
+    // 2. Construir la lista de mensajes para Groq
+    const effectiveSystem = system || AI_SYS;
+    const groqMessages = [
+      { role: 'system', content: effectiveSystem },
+      ...messages.map(m => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: m.content }))
+    ];
 
-    console.log('📤 Enviando a Gemini...');
+    console.log('📤 Enviando a Groq...');
+    console.log('System prompt usado:', effectiveSystem.substring(0, 200));
 
-    // 3. Llamar a Gemini API
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${process.env.GOOGLE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: fullPrompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 2500,
-          }
-        })
-      }
-    );
+    // 3. Llamar a Groq (sin forzar response_format para permitir <LAYOUT>)
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: groqMessages,
+        temperature: 0.7,
+        max_tokens: 2500
+        // NOTA: se eliminó response_format para que la IA pueda incluir la etiqueta <LAYOUT>
+      })
+    });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('❌ Error Gemini:', data);
-      throw new Error(data.error?.message || 'Error en el servicio Gemini');
+      console.error('❌ Error Groq:', data);
+      throw new Error(data.error?.message || 'Error en el servicio Groq');
     }
 
-    // 4. Extraer texto
-    const text = data.candidates[0].content.parts[0].text;
+    // 4. Extraer texto de la respuesta
+    const rawText = data.choices[0].message.content;
+    console.log('📝 Respuesta de Groq (primeros 300 chars):', rawText.substring(0, 300));
 
-    // 5. Estimar tokens usados
-    const tokensUsed = Math.ceil((fullPrompt.length + text.length) / 4);
+    // 5. Calcular tokens usados (Groq devuelve usage.total_tokens)
+    const tokensUsed = data.usage?.total_tokens || Math.ceil((JSON.stringify(groqMessages).length + rawText.length) / 4);
 
     // 6. Descontar créditos en Supabase
     const { error: updateError } = await supabase
@@ -79,50 +172,62 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
 
     if (updateError) {
       console.error('❌ Error actualizando créditos:', updateError);
-      // No interrumpimos el flujo, solo logueamos
+      // No interrumpimos el flujo
     }
 
-    // 7. Registrar consumo (opcional - comentar si la tabla no existe)
+    // 7. Registrar consumo (opcional)
     try {
       await supabase
         .from('credit_usage')
         .insert([{
           user_id: userId,
           tokens_used: tokensUsed,
-          request_id: data.candidates[0]?.tokenCount || 'unknown'
+          request_id: data.id || 'unknown'
         }]);
     } catch (usageError) {
       console.log('⚠️ No se pudo registrar consumo (tabla credit_usage puede no existir)');
     }
 
-    // 8. Extraer el bloque <LAYOUT>
-    const layoutMatch = text.match(/<LAYOUT>([\s\S]*?)<\/LAYOUT>/);
+    // 8. Extraer el layout: primero buscar <LAYOUT>, sino intentar parsear todo el texto como JSON
     let layout = null;
-    if (layoutMatch) {
-      try {
-        layout = JSON.parse(layoutMatch[1].replace(/```json\n?|```/g, '').trim());
-      } catch (e) {
-        console.error('❌ Error parseando layout:', e);
-      }
-    }
+    let cleanText = rawText;
 
-    // 9. Validar layout (opcional)
-    function validateLayout(elements) {
-      if (!elements) return true;
-      for (let i = 0; i < elements.length; i++) {
-        for (let j = i + 1; j < elements.length; j++) {
-          const a = elements[i], b = elements[j];
-          const overlap = !(a.x + a.w <= b.x || b.x + b.w <= a.x ||
-            a.y + a.h <= b.y || b.y + b.h <= a.y);
-          if (overlap) return false;
+    // Intento 1: buscar etiqueta <LAYOUT>
+    const layoutMatch = rawText.match(/<LAYOUT>([\s\S]*?)<\/LAYOUT>/);
+    if (layoutMatch) {
+      const jsonStr = layoutMatch[1].trim();
+      try {
+        layout = JSON.parse(jsonStr);
+        cleanText = rawText.replace(/<LAYOUT>[\s\S]*?<\/LAYOUT>/, '').trim();
+        console.log('✅ Layout extraído mediante <LAYOUT>');
+      } catch (e) {
+        console.error('❌ Error parseando JSON dentro de <LAYOUT>:', e.message);
+      }
+    } else {
+      // Intento 2: intentar parsear todo el texto como JSON (válido)
+      const trimmed = rawText.trim();
+      if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+        try {
+          layout = JSON.parse(trimmed);
+          cleanText = ''; // el texto completo era el layout
+          console.log('✅ Layout extraído como JSON directo');
+        } catch (e) {
+          console.error('❌ Error parseando JSON directo:', e.message);
         }
       }
-      return true;
     }
 
-    // 10. Devolver respuesta
+    // Si se encontró un layout, normalizarlo (mapear tipos y atributos)
+    if (layout) {
+      layout = normalizeLayout(layout);
+      console.log('🎨 Layout normalizado:', JSON.stringify(layout).substring(0, 200));
+    } else {
+      console.log('⚠️ No se pudo extraer ningún layout de la respuesta');
+    }
+
+    // 9. Devolver respuesta
     res.json({
-      text: text.replace(/<LAYOUT>[\s\S]*?<\/LAYOUT>/g, '').trim(),
+      text: cleanText || (layout ? '✅ Layout aplicado.' : 'No se pudo generar el layout. Intenta de nuevo.'),
       layout,
       creditsUsed: tokensUsed,
       creditsRemaining: req.user.credits - tokensUsed
@@ -159,28 +264,27 @@ Por favor, proporciona sugerencias concretas sobre:
 
 Formato de respuesta: Solo texto en español, con viñetas o párrafos claros.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key=${process.env.GOOGLE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1000,
-          }
-        })
-      }
-    );
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        max_tokens: 1000,
+      })
+    });
 
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error?.message || 'Error en Gemini');
+      throw new Error(data.error?.message || 'Error en Groq');
     }
 
-    const suggestions = data.candidates[0].content.parts[0].text;
+    const suggestions = data.choices[0].message.content;
     res.json({ suggestions });
 
   } catch (error) {
@@ -192,46 +296,18 @@ Formato de respuesta: Solo texto en español, con viñetas o párrafos claros.`;
 // -------------------------------------------------------------------
 // ENDPOINT: Obtener diseños anteriores (PROTEGIDO)
 // -------------------------------------------------------------------
-
-
-// Cambia esto:
-// app.get('/api/user-designs', authMiddleware, async (req, res) => {
-
-// Por esto (sin autenticación, SOLO PARA PRUEBAS):
-/*app.get('/api/user-designs', async (req, res) => {
-  // Usuario fijo para pruebas
-  const userId = '93fa7701-f2cd-4eb3-ae8a-3a174f3cbbe2';
-  
-  try {
-    const { data: designs, error } = await supabase
-      .from('user_designs')
-      .select('layout')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(3);
-
-    if (error) throw error;
-    res.json({ designs });
-  } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-*/
-
 app.get('/api/user-designs', authMiddleware, async (req, res) => {
   const userId = req.user.id;
 
   try {
     const { data: designs, error } = await supabase
       .from('user_designs')
-      .select('layout')
+      .select('layout, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(3);
+      .limit(5);
 
     if (error) throw error;
-
     res.json({ designs });
   } catch (error) {
     console.error('❌ Error al obtener diseños:', error);
@@ -240,20 +316,37 @@ app.get('/api/user-designs', authMiddleware, async (req, res) => {
 });
 
 // -------------------------------------------------------------------
-// ENDPOINT: Depuración - Generar token (NO PROTEGIDO, SOLO PRUEBAS)
+// ENDPOINT: Guardar diseño (PROTEGIDO)
 // -------------------------------------------------------------------
-app.get('/api/debug-token/:userId', async (req, res) => {
+app.post('/api/save-design', authMiddleware, async (req, res) => {
+  const { name, layout } = req.body;
+  try {
+    const { data, error } = await supabase
+      .from('user_designs')
+      .insert([{ user_id: req.user.id, name: name || `Diseño ${new Date().toLocaleString()}`, layout }])
+      .select();
+
+    if (error) throw error;
+    res.json({ success: true, design: data[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// -------------------------------------------------------------------
+// Endpoint de depuración (genera token)
+// -------------------------------------------------------------------
+app.get('/api/debug-token/:userId', (req, res) => {
   const { userId } = req.params;
   try {
     const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '1h' });
     res.json({ token });
   } catch (error) {
-    console.error('❌ Error al generar token:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
 // Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running on http://localhost:${PORT}`);
+  console.log(`🚀 Backend corriendo en http://localhost:${PORT}`);
 });
