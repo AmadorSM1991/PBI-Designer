@@ -342,10 +342,16 @@ DESIGN PRINCIPLES (Stephen Few, Edward Tufte, Microsoft guidelines):
 6. PROGRESSIVE DISCLOSURE: KPIs (glance) → charts (trends) → tables (detail).
 
 ZONE STRUCTURE (apply the 8px grid):
-- header: x=0, y=0, w=${cw}, h=56
-- nav-left: x=0, y=56, w=192, h=${ch}-56  (or nav-top: full width h=48)
+- header: x=0, y=0, w=${cw}, h=56  ← ALWAYS add {type:"header"} element to elements array
+- nav-left: x=0, y=56, w=192, h=${ch}-56  ← ALWAYS add {type:"nav"} element to elements array
+- (or nav-top: x=0, y=56, w=${cw}, h=48)
 - content margin: 16px from nav and from canvas right/bottom edges
 - content_x = nav.width+16, content_w = ${cw}-content_x-16
+
+MANDATORY: The FIRST 2 elements in the array MUST always be:
+  {"id":1,"type":"header","x":0,"y":0,"w":${cw},"h":56,"label":"<report title>"}
+  {"id":2,"type":"nav","x":0,"y":56,"w":192,"h":${ch}-56,"label":"Nav Menu"}
+Then all other elements follow (KPIs, charts, etc.) starting at id:3.
 
 ROW 0 — Filter bar (slicers): y=content_y+16, h=40. ALL slicers horizontal here, NEVER at bottom.
 ROW 1 — KPIs (the hero metrics): y=ROW0.bottom+16, h=96. Equal widths, 16px gaps. 3-5 KPIs max.
@@ -357,7 +363,26 @@ TITLES: descriptive, not generic. "Ventas por Región" not "Gráfico 1". Titles 
 COLOR DISCIPLINE: 3-5 colors max. Accent for emphasis, neutrals for structure. Never rainbow.
 VERIFY every element: x+w≤${cw} AND y+h≤${ch}. Gaps are multiples of 8. No overlaps. Aligned edges.
 
-STRICT DEFAULT: canvasTheme=null unless user EXPLICITLY mentions colors/dark/brand/theme.`;}
+STRICT DEFAULT: canvasTheme=null unless user EXPLICITLY mentions colors/dark/brand/theme.
+
+DOMAIN INTELLIGENCE — match labels and visual types to the domain detected in the user's request:
+
+MANUFACTURING / PROCESS CONTROL → gauge for efficiency/OEE/quality %, bar for production by shift/line, line for hourly/daily trends.
+  KPI labels to use: "Producción Diaria", "Producción Total", "Eficiencia de Proceso", "OEE", "Rendimiento", "Tiempo de Ciclo", "Defectos PPM", "Capacidad Utilizada", "Paros No Plan.", "Costo por Unidad", "Throughput", "Turno A", "Turno B", "Nivel de Calidad", "Rechazos", "Cumplimiento"
+
+AGRICULTURE / CROP PROCESSING → gauge for humidity/quality/drying %, line for seasonal trends, pie for quality grade distribution.
+  KPI labels to use: "Kg Cosechados", "Kg Procesados", "Rendimiento/Ha", "Humedad Promedio", "Lotes Procesados", "Calidad A", "Merma", "Tiempo de Proceso", "Costo Operativo", "Lotes Rechazados", "Temperatura Prom.", "Secado Completado"
+
+LOGISTICS / SUPPLY CHAIN → line for on-time trend, bar for deliveries by zone, gauge for service level.
+  KPI labels to use: "Deliveries", "On-Time %", "Entregas a Tiempo", "Inventario (días)", "Nivel de Servicio", "Rotación Inv."
+
+SALES / FINANCE → bar for revenue by product/region, line for monthly trend, pie for segment mix.
+  KPI labels to use: "Total Revenue", "Units Sold", "Avg. Deal", "Win Rate %", "Net Revenue", "EBITDA", "Net Margin", "Cash Flow"
+
+GAUGE USAGE — use gauge when the metric is a % with an implicit target (quality, efficiency, OEE, humidity, capacity utilization). Gauge works best at w≥160, h≥160. Place 2-3 gauges in the primary chart row alongside a bar or line chart.
+
+FEW-SHOT EXAMPLE — Process/Agriculture dashboard (960×580). NOTE: elements[0]=header, elements[1]=nav ALWAYS:
+<LAYOUT>{"mode":"replace","canvasTheme":null,"header":{"show":true,"title":"Control de Proceso","subtitle":"Turno Actual","height":56,"bgColor":""},"navConfig":{"position":"left","style":"static","width":192},"elements":[{"id":1,"type":"header","x":0,"y":0,"w":960,"h":56,"label":"Control de Proceso"},{"id":2,"type":"nav","x":0,"y":56,"w":192,"h":524,"label":"Nav Menu"},{"id":3,"type":"kpi","x":208,"y":72,"w":168,"h":96,"label":"Producción Diaria"},{"id":4,"type":"kpi","x":384,"y":72,"w":168,"h":96,"label":"Eficiencia de Proceso"},{"id":5,"type":"kpi","x":560,"y":72,"w":168,"h":96,"label":"Defectos PPM"},{"id":6,"type":"kpi","x":736,"y":72,"w":168,"h":96,"label":"Paros No Plan."},{"id":7,"type":"gauge","x":208,"y":184,"w":192,"h":192,"label":"OEE"},{"id":8,"type":"gauge","x":408,"y":184,"w":192,"h":192,"label":"Capacidad Utilizada"},{"id":9,"type":"line","x":608,"y":184,"w":296,"h":192,"label":"Producción por Hora"},{"id":10,"type":"bar","x":208,"y":392,"w":360,"h":172,"label":"Producción por Turno"},{"id":11,"type":"table","x":576,"y":392,"w":328,"h":172,"label":"Detalle por Línea"}]}</LAYOUT>`;}
 
 
 // Intenta parsear JSON; si está truncado, lo repara recortando al último
@@ -423,7 +448,22 @@ async function callAI(msgs,cw=960,ch=580,currentState=null){
 // VISUALS  (pointerEvents nunca se tocan aquí — se bloquean en CanvasEl)
 // ═══════════════════════════════════════════════════════════════════
 function KPICard({el,ct}){
-  const D={"Total Revenue":["$2.41M",12.3,true,[1.8,2.0,1.9,2.1,2.2,2.41]],"Units Sold":["8,432",5.7,true,[6.5,7.1,7.4,7.9,8.1,8.4]],"Avg. Deal":["$28.6K",-2.1,false,[31,30,29.5,29,28.8,28.6]],"Win Rate %":["34.8%",1.2,true,[32,33,33.5,34,34.5,34.8]],"Net Revenue":["$1.8M",8.7,true,[1.4,1.5,1.6,1.65,1.72,1.8]],"EBITDA":["$540K",14.2,true,[380,420,450,480,510,540]],"Net Margin":["29.8%",2.1,true,[26,27,28,28.5,29.2,29.8]],"Cash Flow":["$320K",-3.4,false,[370,360,350,340,330,320]],"Headcount":["1,248",3.2,true,[1100,1150,1180,1210,1230,1248]],"Attrition %":["8.4%",-1.1,true,[10,9.5,9,8.9,8.6,8.4]],"Impressions":["2.4M",18,true,[1.6,1.8,2.0,2.1,2.25,2.4]],"CTR %":["3.2%",0.4,true,[2.7,2.8,2.9,3.0,3.1,3.2]],"Conversions":["12,841",9.3,true,[9500,10200,11000,11500,12100,12841]],"CAC":["$48",-12,true,[60,57,54,52,50,48]],"ROAS":["4.2x",8.1,true,[3.1,3.4,3.6,3.8,4.0,4.2]],"Deliveries":["4,821",6.1,true,[3800,4100,4300,4500,4650,4821]],"On-Time %":["94.2%",1.8,true,[90,91.5,92,93,93.5,94.2]]};
+  const D={
+    // Sales & Finance
+    "Total Revenue":["$2.41M",12.3,true,[1.8,2.0,1.9,2.1,2.2,2.41]],"Units Sold":["8,432",5.7,true,[6.5,7.1,7.4,7.9,8.1,8.4]],"Avg. Deal":["$28.6K",-2.1,false,[31,30,29.5,29,28.8,28.6]],"Win Rate %":["34.8%",1.2,true,[32,33,33.5,34,34.5,34.8]],"Net Revenue":["$1.8M",8.7,true,[1.4,1.5,1.6,1.65,1.72,1.8]],"EBITDA":["$540K",14.2,true,[380,420,450,480,510,540]],"Net Margin":["29.8%",2.1,true,[26,27,28,28.5,29.2,29.8]],"Cash Flow":["$320K",-3.4,false,[370,360,350,340,330,320]],
+    // HR
+    "Headcount":["1,248",3.2,true,[1100,1150,1180,1210,1230,1248]],"Attrition %":["8.4%",-1.1,true,[10,9.5,9,8.9,8.6,8.4]],"Productividad":["94.2%",3.1,true,[86,88,90,91.5,93,94.2]],"Ausentismo":["2.1%",-0.8,false,[3.2,3.0,2.8,2.6,2.3,2.1]],"Satisfacción":["87/100",4.2,true,[78,80,82,84,85,87]],"Capacitaciones":["24",20.0,true,[14,16,18,20,22,24]],
+    // Marketing
+    "Impressions":["2.4M",18,true,[1.6,1.8,2.0,2.1,2.25,2.4]],"CTR %":["3.2%",0.4,true,[2.7,2.8,2.9,3.0,3.1,3.2]],"Conversions":["12,841",9.3,true,[9500,10200,11000,11500,12100,12841]],"CAC":["$48",-12,true,[60,57,54,52,50,48]],"ROAS":["4.2x",8.1,true,[3.1,3.4,3.6,3.8,4.0,4.2]],
+    // Logistics
+    "Deliveries":["4,821",6.1,true,[3800,4100,4300,4500,4650,4821]],"On-Time %":["94.2%",1.8,true,[90,91.5,92,93,93.5,94.2]],"Entregas a Tiempo":["96.8%",1.4,true,[93,94,95,95.8,96.3,96.8]],"Inventario (días)":["18 días",-5.3,false,[22,21,20,19.5,18.8,18]],"Nivel de Servicio":["98.2%",0.8,true,[96,96.8,97.2,97.6,98,98.2]],"Rotación Inv.":["4.8x",8.1,true,[3.6,3.9,4.1,4.4,4.6,4.8]],
+    // Manufacturing / Process Control
+    "Producción Diaria":["4,821 un",6.1,true,[3800,4100,4300,4500,4650,4821]],"Producción Total":["38,240 un",8.3,true,[30000,32000,33500,35000,36800,38240]],"Eficiencia de Proceso":["94.2%",1.8,true,[90,91.5,92,93,93.5,94.2]],"OEE":["78.3%",3.1,true,[70,72,74,75.5,77,78.3]],"Rendimiento":["87.5%",2.3,true,[82,83.5,84,85,86.5,87.5]],"Tiempo de Ciclo":["4.2 min",-8.3,false,[5.1,4.9,4.7,4.6,4.4,4.2]],"Defectos PPM":["312",-15.4,false,[480,440,400,370,340,312]],"Capacidad Utilizada":["82.1%",4.2,true,[74,76,78,79.5,81,82.1]],"Paros No Plan.":["3",-25.0,false,[8,7,6,5,4,3]],"Costo por Unidad":["$2.84",-5.2,false,[3.2,3.1,3.0,2.98,2.91,2.84]],"Throughput":["1,248/h",7.8,true,[1050,1100,1140,1180,1210,1248]],"Turno A":["8,420 un",4.1,true,[7200,7600,7900,8100,8280,8420]],"Turno B":["7,840 un",2.8,true,[7000,7200,7400,7580,7700,7840]],"Turno C":["6,910 un",-1.2,false,[7100,7050,7000,6980,6940,6910]],
+    // Agriculture / Crop Processing
+    "Kg Cosechados":["12,840 kg",9.3,true,[9500,10200,11000,11500,12100,12840]],"Kg Procesados":["11,480 kg",7.6,true,[8800,9400,10000,10600,11100,11480]],"Rendimiento/Ha":["8.4 t/ha",1.8,true,[7.5,7.7,7.9,8.0,8.2,8.4]],"Humedad Promedio":["14.2%",-0.8,false,[15.1,14.9,14.7,14.5,14.3,14.2]],"Lotes Procesados":["48",12.5,true,[34,37,40,43,46,48]],"Calidad A":["91.3%",2.1,true,[87,88,89,90,90.8,91.3]],"Merma":["6.8%",-1.2,false,[8.2,7.9,7.6,7.3,7.0,6.8]],"Tiempo de Proceso":["3.2 h",-5.1,false,[3.8,3.7,3.6,3.5,3.4,3.2]],"Costo Operativo":["$18,240",-3.4,false,[20100,19800,19500,19200,18800,18240]],"Lotes Rechazados":["2",-33.3,false,[5,4,4,3,3,2]],"Temperatura Prom.":["22.4°C",0.4,true,[21.8,22.0,22.1,22.2,22.3,22.4]],"Secado Completado":["89.6%",3.2,true,[83,85,86.5,87.5,88.8,89.6]],
+    // Quality
+    "Nivel de Calidad":["97.8%",1.2,true,[95,95.8,96.3,97,97.4,97.8]],"Rechazos":["1.8%",-0.6,false,[2.8,2.6,2.4,2.2,2.0,1.8]],"Reprocesos":["0.9%",-0.3,false,[1.5,1.4,1.2,1.1,1.0,0.9]],"Cumplimiento":["98.4%",0.8,true,[96,96.8,97.2,97.6,98,98.4]],
+  };
   const[v,chg,up,pts]=D[el.label]||["—",0,true,[20,30,25,40,35,45]];
   const W=58,H=22,mn=Math.min(...pts),mx=Math.max(...pts),rng=mx-mn||1;
   const sp=pts.map((p,i)=>`${(i/(pts.length-1))*W},${H-((p-mn)/rng)*H}`).join(" ");
@@ -526,8 +566,28 @@ function DonutChart({el,ct}){
   );
 }
 function TableViz({el,ct}){
-  const cols=["Product","Category","Sales","Units","Margin"];
-  const rows=[["Laptop Pro","Electronics","$48,200","324","32%"],["Wireless Mouse","Accessories","$12,400","892","45%"],["Monitor 27\"","Electronics","$38,600","210","28%"],["USB-C Hub","Accessories","$8,700","580","52%"],["Keyboard","Accessories","$15,300","418","41%"],["Webcam HD","Electronics","$9,800","340","38%"]];
+  const lbl=(el.label||"").toLowerCase();
+  const isAg=/(lote|cosech|proceso|arilo|palta|uva|fruta|agr|campo|fundo|calibr|kg|merma)/i.test(lbl);
+  const isMfg=/(línea|turno|máquin|defect|producción|oe|planta|operac)/i.test(lbl);
+  const isLog=/(envío|entrega|ruta|flota|guía|pedido|logíst|proveedor)/i.test(lbl);
+  const isHR=/(emplead|colabor|rrhh|contrat|cargo|área|departament)/i.test(lbl);
+  let cols,rows;
+  if(isAg){
+    cols=["Lote","Fundo","Kg Netos","Calidad","Merma %"];
+    rows=[["LT-2401","El Olivo","8,420","A","3.2%"],["LT-2402","San José","6,150","A","4.1%"],["LT-2403","El Peral","9,800","B","5.8%"],["LT-2404","La Viña","7,230","A","2.9%"],["LT-2405","El Monte","5,640","B","6.3%"],["LT-2406","San Luis","4,890","A","3.7%"]];
+  } else if(isMfg){
+    cols=["Línea","Turno","Producción","OEE","Defectos"];
+    rows=[["L-01","Mañana","1,240 u","87%","12 ppm"],["L-02","Mañana","980 u","79%","28 ppm"],["L-01","Tarde","1,180 u","84%","15 ppm"],["L-03","Mañana","1,420 u","91%","8 ppm"],["L-02","Tarde","910 u","76%","34 ppm"],["L-03","Tarde","1,350 u","89%","10 ppm"]];
+  } else if(isLog){
+    cols=["Guía","Destino","Estado","Tiempo","Costo"];
+    rows=[["GU-0981","Lima Norte","Entregado","2.1 h","$18"],["GU-0982","Lima Sur","En ruta","—","$22"],["GU-0983","Callao","Entregado","1.4 h","$14"],["GU-0984","San Isidro","Pendiente","—","$20"],["GU-0985","Miraflores","Entregado","1.8 h","$16"],["GU-0986","Surco","En ruta","—","$19"]];
+  } else if(isHR){
+    cols=["Colaborador","Área","Cargo","Ingreso","Estado"];
+    rows=[["A. Rodríguez","Operaciones","Supervisor","Ene 2022","Activo"],["B. Torres","Calidad","Inspector","Mar 2021","Activo"],["C. Díaz","Logística","Analista","Jun 2023","Activo"],["D. Vargas","RRHH","Coordinador","Feb 2020","Activo"],["E. Soto","Finanzas","Contador","Sep 2022","Activo"],["F. Ríos","TI","Desarrollador","Nov 2023","Activo"]];
+  } else {
+    cols=["Producto","Categoría","Ventas","Unidades","Margen"];
+    rows=[["Línea Premium","A","$48,200","324","32%"],["Línea Estándar","B","$12,400","892","45%"],["Línea Pro","A","$38,600","210","28%"],["Línea Basic","C","$8,700","580","52%"],["Línea Elite","A","$15,300","418","41%"],["Línea Value","B","$9,800","340","38%"]];
+  }
   const vC=Math.max(2,Math.floor((el.w-24)/75));
   const vR=Math.max(2,Math.floor((el.h-52)/24));
   return(
@@ -1780,11 +1840,7 @@ export default function PBIDesigner(){
                 return;
               }
               const newW=s.w, newH=s.h;
-              // Si hay elementos y el tamaño cambia, escalar automáticamente
-              if(els.length>0&&(newW!==curW||newH!==curH)){
-                suppressResize.current=true; // escalamos directo, sin banner
-                scaleElementsTo(curW,curH,newW,newH);
-              }
+              // Cambiar tamaño — el useEffect detectará el cambio y mostrará el banner de confirmación
               setCanvasSize(s);
             }}
             style={{fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border2}`,borderRadius:5,padding:"2px 4px",cursor:"pointer"}}>

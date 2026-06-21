@@ -66,12 +66,34 @@ function normalizeLayout(layout) {
       // Mapeo de tipos no estándar
       const typeMap = {
         "lineChart": "line",
+        "areaChart": "line",
+        "splineChart": "line",
         "waterfall": "bar",
+        "columnChart": "bar",
+        "barChart": "bar",
+        "clusteredBar": "bar",
         "ribbon": "line",
         "map": "image",
+        "filledMap": "image",
         "funnel": "bar",
         "donut": "pie",
         "donutChart": "pie",
+        "pieChart": "pie",
+        "doughnut": "pie",
+        "kpiCard": "kpi",
+        "card": "kpi",
+        "multiRowCard": "kpi",
+        "scatterChart": "scatter",
+        "bubbleChart": "scatter",
+        "matrixVisual": "matrix",
+        "tableEx": "table",
+        "pivotTable": "matrix",
+        "treemapChart": "treemap",
+        "gauge": "gauge",
+        "radialGauge": "gauge",
+        "shape": "card",
+        "textbox": "card",
+        "slicer": "slicer",
       };
       return {
         id: el.id || Math.floor(Math.random() * 10000),
@@ -131,35 +153,34 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
       ...messages.map(m => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: m.content }))
     ];
 
-    console.log('📤 Enviando a Groq...');
+    console.log('📤 Enviando a Gemini...');
     console.log('System prompt usado:', effectiveSystem.substring(0, 200));
 
-    // 3. Llamar a Groq (sin forzar response_format para permitir <LAYOUT>)
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    // 3. Llamar a Gemini 2.5 Flash
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Authorization': `Bearer ${process.env.GEMINI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'gemini-2.5-flash',
         messages: groqMessages,
-        temperature: 0.7,
-        max_tokens: 2500
-        // NOTA: se eliminó response_format para que la IA pueda incluir la etiqueta <LAYOUT>
+        temperature: 1,
+        max_tokens: 4000
       })
     });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('❌ Error Groq:', data);
-      throw new Error(data.error?.message || 'Error en el servicio Groq');
+      console.error('❌ Error Gemini:', data);
+      throw new Error(data.error?.message || 'Error en el servicio Gemini');
     }
 
     // 4. Extraer texto de la respuesta
     const rawText = data.choices[0].message.content;
-    console.log('📝 Respuesta de Groq (primeros 300 chars):', rawText.substring(0, 300));
+    console.log('📝 Respuesta de Gemini (primeros 300 chars):', rawText.substring(0, 300));
 
     // 5. Calcular tokens usados (Groq devuelve usage.total_tokens)
     const tokensUsed = data.usage?.total_tokens || Math.ceil((JSON.stringify(groqMessages).length + rawText.length) / 4);
@@ -264,16 +285,16 @@ Por favor, proporciona sugerencias concretas sobre:
 
 Formato de respuesta: Solo texto en español, con viñetas o párrafos claros.`;
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Authorization': `Bearer ${process.env.GEMINI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'gemini-2.5-flash',
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0.7,
+        temperature: 1,
         max_tokens: 1000,
       })
     });
