@@ -66,12 +66,12 @@ function normalizeLayout(layout) {
       // Mapeo de tipos no estándar
       const typeMap = {
         "lineChart": "line",
-        "gauge": "kpi",
         "waterfall": "bar",
-        "scatter": "line",
         "ribbon": "line",
         "map": "image",
-        "funnel": "bar"
+        "funnel": "bar",
+        "donut": "pie",
+        "donutChart": "pie",
       };
       return {
         id: el.id || Math.floor(Math.random() * 10000),

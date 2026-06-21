@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════════════
-// APP SHELL THEMES
+// APP SHELL THEMES — solo cambian la UI (panels, topbar, chat)
+// El usuario las elige para su comodidad visual
+// NUNCA afectan el canvas
 // ═══════════════════════════════════════════════════════════════════
 const APP_THEMES = {
   light:  { id:"light",  icon:"☀️",  name:"Light",
@@ -12,7 +14,7 @@ const APP_THEMES = {
     success:"#059669", danger:"#dc2626",
     bubbleUser:"#eff6ff", bubbleAI:"#f8fafc", inputBg:"#f8fafc",
   },
-  slate:  { id:"slate",  icon:"🌑",  name:"Slate",
+  slate:  { id:"slate",  icon:"🌑",  name:"Dark",
     bg:"#0f172a", surface:"#1e293b", topbar:"#0f172a", sidebar:"#1e293b",
     border:"#334155", border2:"#475569",
     text:"#f1f5f9", textMuted:"#94a3b8", textLight:"#64748b",
@@ -28,40 +30,69 @@ const APP_THEMES = {
     success:"#34d399", danger:"#f87171",
     bubbleUser:"#1a2d50", bubbleAI:"#0e1e3a", inputBg:"#060e1c",
   },
-  purple: { id:"purple", icon:"🔮",  name:"Purple",
-    bg:"#0e0b1e", surface:"#1a1430", topbar:"#0e0b1e", sidebar:"#1a1430",
-    border:"#2d1f50", border2:"#3d2a6a",
-    text:"#ede9fe", textMuted:"#a78bfa", textLight:"#6d5e9e",
-    accent:"#a78bfa", accentBg:"#1e1640", accentLight:"#2d1b69",
-    success:"#4ade80", danger:"#fb7185",
-    bubbleUser:"#1e1640", bubbleAI:"#1a1430", inputBg:"#0e0b1e",
-  },
-  forest: { id:"forest", icon:"🌲",  name:"Forest",
-    bg:"#081910", surface:"#0f2d18", topbar:"#081910", sidebar:"#0f2d18",
-    border:"#1a4a28", border2:"#235e35",
-    text:"#d1fae5", textMuted:"#6ee7b7", textLight:"#3d7d5c",
-    accent:"#34d399", accentBg:"#0d3520", accentLight:"#065f3a",
-    success:"#6ee7b7", danger:"#fca5a5",
-    bubbleUser:"#0d3520", bubbleAI:"#0f2d18", inputBg:"#081910",
-  },
 };
 
 // ═══════════════════════════════════════════════════════════════════
-// CANVAS DEFAULT
+// CANVAS DEFAULT — Clean Light, punto de partida siempre
+// Solo la IA lo modifica cuando el usuario lo pide explícitamente
 // ═══════════════════════════════════════════════════════════════════
 const CANVAS_DEFAULT = {
-  canvas:"#ffffff", cardBg:"#ffffff", cardBorder:"#e2e8f0",
+  canvas:"#ffffff", wallpaper:"#e8edf2", cardBg:"#ffffff", cardBorder:"#e2e8f0",
   accent:"#2563eb", accent2:"#1d4ed8", secondary:"#eff6ff",
   text:"#1e293b", textSub:"#64748b", textMuted:"#94a3b8",
   headerBg:"#2563eb", success:"#059669", danger:"#dc2626", warning:"#f59e0b",
   r:8,
 };
 
+// ── TAMAÑOS DE CANVAS — estándares reales de Power BI ─────────────
+const CANVAS_SIZES=[
+  {id:"960x580",   label:"PBI Default — 960×580",      w:960,  h:580},
+  {id:"1280x720",  label:"16:9 — 1280×720",            w:1280, h:720},
+  {id:"1600x900",  label:"16:9 — 1600×900",            w:1600, h:900},
+  {id:"1920x1080", label:"Full HD — 1920×1080",        w:1920, h:1080},
+  {id:"900x1600",  label:"9:16 Vertical — 900×1600",   w:900,  h:1600},
+  {id:"768x1024",  label:"3:4 Vertical — 768×1024",    w:768,  h:1024},
+  {id:"1024x768",  label:"4:3 — 1024×768",             w:1024, h:768},
+  {id:"custom",    label:"Personalizado",               w:1280, h:720},
+];
+
+// ── NAV DEFAULT — config completa del nav builder ─────────────────
+const NAV_DEFAULT={
+  position:"left", style:"collapsible",
+  width:220, widthCollapsed:64,
+  logoUrl:"", reportName:"Mi Reporte", reportSubtitle:"",
+  fontSize:13, iconSize:16, borderRadius:8,
+  colors:{
+    bg:"#1e293b", accent:"#3b82f6",
+    textActive:"#ffffff", textInactive:"#94a3b8",
+    hover:"#ffffff", hoverOpacity:15,
+    press:"#ffffff", pressOpacity:20,
+    selected:"#3b82f6", selectedOpacity:25,
+  },
+  pages:[
+    {id:1,label:"Dashboard",icon:"⊞"},
+    {id:2,label:"Ventas",icon:"📊"},
+    {id:3,label:"Finanzas",icon:"💰"},
+    {id:4,label:"RRHH",icon:"👥"},
+  ],
+  exportSeparate:false,
+};
+
+// Paleta de iconos para páginas del nav (categorizados para dashboards)
+const NAV_ICONS=["⊞","📊","📈","📉","💰","💵","💳","🏦","🛒","📦","🚚","🏭","⚙","🔧","👥","👤","🧑‍💼","📋","📁","🗂","📅","🕐","🌍","🗺","📍","🎯","🏆","⭐","🔔","📌","🔍","🔎","💡","⚡","🔥","✅","⚠","❤","🩺","🥑","🌱","🍎","🐄","☀","💧","📡","🖥","📱","🏠","🏢","🎓","📚"];
+
+
+// ── PALETA DE ELEMENTOS ───────────────────────────────────────────
 const PALETTE=[
   {type:"kpi",    label:"KPI Card",    icon:"▣", color:"#2563eb"},
+  {type:"kpispark",label:"KPI Sparkline",icon:"📈",color:"#0ea5e9"},
   {type:"bar",    label:"Bar Chart",   icon:"▦", color:"#7c3aed"},
   {type:"line",   label:"Line Chart",  icon:"📈", color:"#059669"},
   {type:"pie",    label:"Donut Chart", icon:"◎", color:"#d97706"},
+  {type:"gauge",  label:"Gauge",       icon:"◔", color:"#0891b2"},
+  {type:"scatter",label:"Scatter",     icon:"⠿", color:"#db2777"},
+  {type:"treemap",label:"Treemap",     icon:"▥", color:"#16a34a"},
+  {type:"matrix", label:"Matrix",      icon:"▤", color:"#9333ea"},
   {type:"table",  label:"Table",       icon:"⊞", color:"#dc2626"},
   {type:"slicer", label:"Slicer",      icon:"⊟", color:"#0891b2"},
   {type:"card",   label:"Text Card",   icon:"☐", color:"#7c3aed"},
@@ -70,18 +101,22 @@ const PALETTE=[
   {type:"image",  label:"Image/Logo",  icon:"🖼", color:"#ea580c"},
   {type:"button", label:"Button",      icon:"⬭", color:"#db2777"},
 ];
-const DEF_SIZE={kpi:[170,88],bar:[320,215],line:[310,195],pie:[205,205],table:[310,215],slicer:[170,215],card:[205,120],nav:[190,550],header:[940,58],image:[165,125],button:[145,44]};
+const DEF_SIZE={kpi:[170,88],kpispark:[180,110],bar:[320,215],line:[310,195],pie:[205,205],gauge:[180,140],scatter:[280,200],treemap:[260,200],matrix:[300,180],table:[310,215],slicer:[170,215],card:[205,120],nav:[190,550],header:[940,58],image:[165,125],button:[145,44]};
 
+// ── SNAP / HANDLES ────────────────────────────────────────────────
 const GRID=8;
 const snap=v=>Math.round(v/GRID)*GRID;
+// [cursor, dx, dy, dw, dh] — dx/dy: cuánto mueve la posición; dw/dh: cuánto cambia el tamaño
+// Borde derecho (e): solo ancho. Borde izq (w): mueve x + ancho inverso. Análogo vertical.
 const HANDLES=[
-  ["nw-resize",1,1,-1,-1],["n-resize",0,1,0,-1],["ne-resize",-1,1,1,-1],
-  ["w-resize",1,0,-1,0],                          ["e-resize",-1,0,1,0],
-  ["sw-resize",1,-1,-1,1],["s-resize",0,-1,0,1],  ["se-resize",-1,-1,1,1],
+  ["nw-resize",1,1,-1,-1],["n-resize",0,1,0,-1],["ne-resize",0,1,1,-1],
+  ["w-resize",1,0,-1,0],                          ["e-resize",0,0,1,0],
+  ["sw-resize",1,0,-1,1],["s-resize",0,0,0,1],    ["se-resize",0,0,1,1],
 ];
 const HPOS=[[0,0],[.5,0],[1,0],[0,.5],[1,.5],[0,1],[.5,1],[1,1]];
 const MIN_W=60,MIN_H=40;
 
+// ── HELPERS ───────────────────────────────────────────────────────
 function adjHex(hex,f){
   const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if(!r)return hex;
@@ -92,6 +127,34 @@ function rgba(hex,a){
   const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if(!r)return hex;
   return`rgba(${parseInt(r[1],16)},${parseInt(r[2],16)},${parseInt(r[3],16)},${a})`;
+}
+// Mezcla dos colores hex: t=0 → a, t=1 → b
+function mix(a,b,t){
+  const pa=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(a);
+  const pb=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(b);
+  if(!pa||!pb)return a;
+  const m=(x,y)=>Math.round(parseInt(x,16)*(1-t)+parseInt(y,16)*t).toString(16).padStart(2,"0");
+  return`#${m(pa[1],pb[1])}${m(pa[2],pb[2])}${m(pa[3],pb[3])}`;
+}
+// ¿Es un color oscuro? (para decidir tono del nav)
+function isDark(hex){
+  const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if(!r)return false;
+  const lum=0.299*parseInt(r[1],16)+0.587*parseInt(r[2],16)+0.114*parseInt(r[3],16);
+  return lum<128;
+}
+// Luminancia relativa WCAG
+function _relLum(hex){
+  const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if(!r)return 0;
+  const ch=v=>{const s=parseInt(v,16)/255;return s<=0.03928?s/12.92:Math.pow((s+0.055)/1.055,2.4);};
+  return 0.2126*ch(r[1])+0.7152*ch(r[2])+0.0722*ch(r[3]);
+}
+// Ratio de contraste WCAG entre dos colores (1 a 21)
+function contrastRatio(fg,bg){
+  const l1=_relLum(fg),l2=_relLum(bg);
+  const lighter=Math.max(l1,l2),darker=Math.min(l1,l2);
+  return (lighter+0.05)/(darker+0.05);
 }
 function fileIcon(n=""){
   if(/\.(png|jpg|jpeg|gif|webp|svg|bmp)$/i.test(n))return"🖼";
@@ -108,89 +171,71 @@ async function readFile(file){
   return{type:"text",name:file.name,content:await file.text()};
 }
 
-function buildThemeJson(ct) {
-  // Función para asegurar color HEX válido (6 dígitos con #)
-  const safeHex = (c, fallback = "#ffffff") => {
-    if (!c || typeof c !== "string") return fallback;
-    let clean = c.trim().toLowerCase();
-    // Si ya es #rrggbb válido
-    if (/^#[0-9a-f]{6}$/.test(clean)) return clean;
-    // Si es #rgb, expandir a #rrggbb
-    if (/^#[0-9a-f]{3}$/.test(clean)) {
-      const r = clean[1], g = clean[2], b = clean[3];
-      return `#${r}${r}${g}${g}${b}${b}`;
-    }
-    // Si es rgb sin #
-    if (/^[0-9a-f]{6}$/.test(clean)) return `#${clean}`;
-    // Si es rgb sin # de 3 dígitos
-    if (/^[0-9a-f]{3}$/.test(clean)) {
-      return `#${clean[0]}${clean[0]}${clean[1]}${clean[1]}${clean[2]}${clean[2]}`;
-    }
-    return fallback;
-  };
-
-  // Colores base con fallbacks seguros
-  const canvas   = safeHex(ct.canvas,   "#ffffff");
-  const accent   = safeHex(ct.accent,   "#2563eb");
-  const accent2  = safeHex(ct.accent2,  "#1d4ed8");
-  const secondary= safeHex(ct.secondary, "#eff6ff");
-  const textCol  = safeHex(ct.text,     "#1e293b");
-  const textSub  = safeHex(ct.textSub,  "#64748b");
-  const success  = safeHex(ct.success,  "#059669");
-  const danger   = safeHex(ct.danger,   "#dc2626");
-  const warning  = safeHex(ct.warning,  "#f59e0b");
-
-  // Paleta de colores: mínimo 8 colores
-  const dataColors = [
-    accent, accent2, success, warning, danger,
-    "#3b82f6", "#8b5cf6", "#10b981"
-  ];
-
-  // Tema simplificado (sin visualStyles complejos para evitar errores)
-  return {
-    name: "PBI Designer",
-    dataColors: dataColors,
-    background: canvas,
-    foreground: textCol,
-    tableAccent: accent,
-    textClasses: {
-      title: {
-        fontFace: "Segoe UI",
-        fontSize: 18,
-        bold: true,
-        color: textCol
-      },
-      header: {
-        fontFace: "Segoe UI",
-        fontSize: 11,
-        bold: true,
-        color: textCol
-      },
-      body: {
-        fontFace: "Segoe UI",
-        fontSize: 10,
-        bold: false,
-        color: textSub
-      },
-      callout: {
-        fontFace: "Segoe UI",
-        fontSize: 28,
-        bold: true,
-        color: accent
-      }
-    }
-  };
+// Convierte links de compartir (Drive/Dropbox/OneDrive/Imgur) a URL directa de imagen
+function directImageUrl(url=""){
+  const u=url.trim();
+  if(!u)return u;
+  // Google Drive: /file/d/ID/view → uc?export=view&id=ID
+  let m=u.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+  if(m)return`https://drive.google.com/uc?export=view&id=${m[1]}`;
+  m=u.match(/drive\.google\.com\/open\?id=([^&]+)/);
+  if(m)return`https://drive.google.com/uc?export=view&id=${m[1]}`;
+  // Dropbox: www.dropbox.com → dl.dropboxusercontent.com, sin ?dl=0
+  if(/dropbox\.com/.test(u))return u.replace("www.dropbox.com","dl.dropboxusercontent.com").replace(/[?&]dl=\d/,"");
+  // OneDrive: 1drv.ms o onedrive.live.com → forzar descarga directa
+  if(/1drv\.ms|onedrive\.live\.com/.test(u))return u.includes("?")?u+"&download=1":u+"?download=1";
+  // Imgur: página imgur.com/ID → i.imgur.com/ID.png
+  m=u.match(/^https?:\/\/(?:www\.)?imgur\.com\/(?:gallery\/|a\/)?([a-zA-Z0-9]+)$/);
+  if(m)return`https://i.imgur.com/${m[1]}.png`;
+  return u;
 }
 
-function buildLayoutJson(els,ct,navCfg,hdrCfg){
+// ── EXPORT ────────────────────────────────────────────────────────
+function buildThemeJson(ct){
+  const hex=(c,fb="#000000")=>typeof c==="string"&&/^#[0-9a-fA-F]{6}$/.test(c.trim())?c.trim():fb;
+  const accent  =hex(ct.accent,  "#2563eb");
+  const accent2 =hex(ct.accent2, "#1d4ed8");
+  const canvas  =hex(ct.canvas,  "#ffffff");
+  const textCol =hex(ct.text,    "#1e293b");
+  const textSub =hex(ct.textSub, "#64748b");
+  const success =hex(ct.success, "#059669");
+  const danger  =hex(ct.danger,  "#dc2626");
+  const warning =hex(ct.warning, "#f59e0b");
+  const safeAdj=(c,f,fb)=>hex(adjHex(c,f),fb);
+  // Schema MÍNIMO y validado — Power BI endureció la validación en 2025.
+  // Solo propiedades de nivel superior garantizadas + textClasses simples.
+  // dataColors, background, foreground, tableAccent y textClasses son
+  // las propiedades estables que PBI Desktop acepta sin error de schema.
+  return{
+    name:"PBI Designer",
+    dataColors:[accent,accent2,success,warning,danger,
+      safeAdj(accent,1.2,accent),safeAdj(accent,0.7,accent2),safeAdj(accent,0.4,"#94a3b8")],
+    background:canvas,
+    foreground:textCol,
+    tableAccent:accent,
+    good:success,
+    neutral:warning,
+    bad:danger,
+    maximum:accent,
+    minimum:safeAdj(accent,0.4,"#94a3b8"),
+    textClasses:{
+      title:    {fontFace:"Segoe UI Semibold",fontSize:14,color:textCol},
+      header:   {fontFace:"Segoe UI Semibold",fontSize:12,color:textCol},
+      label:    {fontFace:"Segoe UI",fontSize:10,color:textSub},
+      callout:  {fontFace:"Segoe UI",fontSize:32,color:accent},
+    },
+  };
+}
+function buildLayoutJson(els,ct,navCfg,hdrCfg,cw=960,ch=580){
   const pbiMap={kpi:"card",bar:"barChart",line:"lineChart",pie:"donutChart",table:"tableEx",slicer:"slicer",nav:"actionButton",card:"textbox",button:"actionButton",image:"image",header:"shape"};
-  return{metadata:{tool:"PBI Designer v1.5",exportedAt:new Date().toISOString()},page:{width:960,height:580,background:ct.canvas},colors:{accent:ct.accent,cardBg:ct.cardBg,text:ct.text},header:hdrCfg,navigation:navCfg,elements:els.map(e=>({id:e.id,type:e.type,label:e.label,position:{x:e.x,y:e.y},size:{width:e.w,height:e.h},powerBIVisual:pbiMap[e.type]||"textbox"}))};
+  return{metadata:{tool:"PBI Designer v2.0",exportedAt:new Date().toISOString()},page:{width:cw,height:ch,background:ct.canvas},colors:{accent:ct.accent,cardBg:ct.cardBg,text:ct.text},header:hdrCfg,navigation:navCfg,elements:els.map(e=>({id:e.id,type:e.type,label:e.label,position:{x:e.x,y:e.y},size:{width:e.w,height:e.h},powerBIVisual:pbiMap[e.type]||"textbox"}))};
 }
-function buildReadme(els,ct,navCfg){
-  return`PBI Designer v1.5 — Export Guide
+function buildReadme(els,ct,navCfg,cw=960,ch=580){
+  return`PBI Designer v2.0 — Export Guide
 ===================================
 Canvas BG  : ${ct.canvas}
 Accent     : ${ct.accent}
+Canvas Size: ${cw} × ${ch} px
 Elements   : ${els.length}   Nav: ${navCfg.position} / ${navCfg.style}
 Exported   : ${new Date().toLocaleString()}
 
@@ -198,7 +243,7 @@ STEP 1 — Import Theme
   Power BI Desktop → View → Themes → Browse for themes → pbi-theme.json
 
 STEP 2 — Set Page Size
-  Format pane → Canvas settings → Custom → 960 × 580 px
+  Format pane → Canvas settings → Custom → ${cw} × ${ch} px
   Background: ${ct.canvas}
 
 STEP 3 — Add Visuals (use pbi-layout.json for exact positions)
@@ -212,139 +257,189 @@ STEP 4 — Navigation (${navCfg.position} / ${navCfg.style})
 
 Docs: https://learn.microsoft.com/power-bi/create-reports/desktop-report-themes`;
 }
-//function dlUri(n,c,m){const a=document.createElement("a");a.href="data:"+m+";charset=utf-8,"+encodeURIComponent(c);
-//  a.download=n;document.body.appendChild(a);a.click();document.body.removeChild(a);}
-function dlUri(name, content, mime) {
-  // Convertir string a Uint8Array para evitar BOM
-  const encoder = new TextEncoder();
-  const data = encoder.encode(content);
-  const blob = new Blob([data], { type: `${mime};charset=utf-8` });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+function dlUri(n,c,m){const a=document.createElement("a");a.href="data:"+m+";charset=utf-8,"+encodeURIComponent(c);a.download=n;document.body.appendChild(a);a.click();document.body.removeChild(a);}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// AI ENGINE
+// canvasTheme en el JSON solo se envía cuando el usuario pide colores
+// ═══════════════════════════════════════════════════════════════════
+function AI_SYS(cw,ch){return`You are an expert Power BI report designer and dataviz auditor. Help users design professional dashboards.
+
+Always respond in the user's language (Spanish if they write in Spanish).
+
+OUTPUT FORMAT — CRITICAL ORDER:
+1. FIRST output the <LAYOUT>...</LAYOUT> block (so it never gets cut off)
+2. THEN a brief explanation (max 4 lines). Exception: AUDIT mode outputs <AUDIT>...</AUDIT> instead.
+3. NEVER wrap blocks inside markdown code fences (no \`\`\`)
+4. JSON must be COMPACT: one line per element, no extra whitespace
+5. FORBIDDEN fields: "note", "description", "comment" — ONLY the schema fields below
+6. Maximum 20 elements per layout
+
+JSON SCHEMA (for LAYOUT):
+{
+  "mode": "replace | update",
+  "canvasTheme": { "canvas":"#ffffff","wallpaper":"#e8edf2","cardBg":"#ffffff","cardBorder":"#e2e8f0","accent":"#2563eb","accent2":"#1d4ed8","secondary":"#eff6ff","text":"#1e293b","textSub":"#64748b","textMuted":"#94a3b8","headerBg":"#2563eb","success":"#059669","danger":"#dc2626","warning":"#f59e0b","r":8 },
+  "header":    { "show": true, "title": "...", "subtitle": "...", "height": 58, "bgColor": "" },
+  "navConfig": { "position": "left|right|top|none", "style": "static|collapsible|floating", "width": 190 },
+  "elements":  [{ "id":1, "type":"header|nav|kpi|kpispark|bar|line|pie|gauge|scatter|treemap|matrix|table|slicer|card|button|image", "x":0, "y":0, "w":${cw}, "h":58, "label":"Title" }]
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// AI SYSTEM PROMPT (mejorado para forzar formato estándar)
-// ═══════════════════════════════════════════════════════════════════
-const AI_SYS = `Eres un arquitecto de dashboards de Power BI. Cuando el usuario pida crear o modificar un dashboard, DEBES responder ÚNICAMENTE con un bloque <LAYOUT> que contenga el JSON completo del diseño. NUNCA añadas texto fuera del bloque.
-El JSON debe incluir: canvasThemeId (opcional), header, navConfig y elements.
-CADA elemento debe usar las propiedades: id (número), type (string), x (número), y (número), w (ancho en px), h (alto en px), label (texto).
-NO uses width, height, displayName ni fields.
+MODE — CRITICAL:
+- "replace" → NEW dashboard from scratch. Return FULL elements array.
+- "update" → MODIFY current design. Keep ALL elements with SAME ids/x/y/w/h/label — only change what user asked.
+- If user only changes theme/colors → mode:"update", return canvasTheme + SAME elements unchanged.
+- Default to "update" when CURRENT_STATE exists and user says "este/el reporte/cámbiale/ahora/también/agrega/quita".
+- Use "replace" only for clearly new requests ("crea un dashboard de...", "haz uno nuevo de...").
 
-Ejemplo de respuesta CORRECTA:
-<LAYOUT>{"canvasThemeId":"clean","header":{"show":true,"title":"Mi Dashboard","subtitle":"Ventas","height":58,"bgColor":""},"navConfig":{"position":"left","style":"static","width":190},"elements":[{"id":1,"type":"kpi","x":10,"y":10,"w":180,"h":90,"label":"Ventas"}]}</LAYOUT>
+AUDIT MODE — when user asks "audita", "revisa el diseño", "qué mejorar", "critica", "analiza":
+Output <AUDIT>JSON</AUDIT> instead of <LAYOUT>. JSON schema:
+{
+  "score": 0-100,
+  "grade": "A|B|C|D",
+  "summary": "Evaluación general en 1 oración",
+  "issues": [
+    { "severity": "high|medium|low", "category": "jerarquía|contraste|accesibilidad|espaciado|tipografía|solapamiento|dataviz", "element": "id o descripción", "problem": "qué está mal", "fix": "cómo corregirlo" }
+  ],
+  "strengths": ["punto positivo 1", "punto positivo 2"],
+  "quickFixes": ["fix rápido 1", "fix rápido 2"]
+}
 
-Si el usuario hace una pregunta normal (como "hola" o "¿estás listo?"), responde en lenguaje natural sin el bloque.`;
+MOBILE MODE — when user asks "vista móvil", "versión móvil", "layout para teléfono/celular":
+Generate a LAYOUT for 900×1600 canvas (9:16 vertical), mode:"replace".
+CRITICAL — STACK VERTICALLY with NO OVERLAPS. Each element's y = previous element's (y + h) + 16 gap.
+Use this EXACT vertical sequence (x=20, w=860 for all content, gap=16):
+  - header:  x=0,   y=0,    w=900, h=70
+  - nav:     x=0,   y=70,   w=900, h=54   (position:"top")
+  - slicer:  x=20,  y=140,  w=860, h=80   (FILTROS ARRIBA, justo bajo el nav)
+  - kpi 1:   x=20,  y=236,  w=860, h=110
+  - kpi 2:   x=20,  y=362,  w=860, h=110
+  - kpi 3:   x=20,  y=488,  w=860, h=110
+  - kpi 4:   x=20,  y=614,  w=860, h=110
+  - chart 1: x=20,  y=740,  w=860, h=280
+  - chart 2: x=20,  y=1036, w=860, h=280
+  - table:   x=20,  y=1332, w=860, h=252
+Skip rows you don't need, but NEVER let two elements share vertical space. ALWAYS verify y+h of one ≤ y of the next. Max y+h must be ≤ 1600.
+SLICERS/filtros van SIEMPRE arriba (tras el nav), nunca al final.
+If there are more KPIs than fit, you may place 2 KPIs side by side: kpi_left x=20 w=422, kpi_right x=458 w=422, same y and h=110.
 
-async function callAI(msgs){
+IMPORT MODE — when user uploads an image of an existing dashboard: analyze the image and recreate the layout as faithfully as possible. Infer element types, approximate positions and sizes. Use mode:"replace".
+
+CANVAS THEME RULES:
+- DEFAULT: canvasTheme = null unless user EXPLICITLY mentions colors/dark/brand/theme
+- "wallpaper" = area OUTSIDE the page. "canvas" = the page itself.
+- DARK: canvas ~#0d1b2a, cardBg ~#0f2236, text ~#e2f4ff, accent bright, wallpaper ~#060e18
+- LIGHT: canvas #ffffff, cardBg #ffffff, accent = brand color
+
+LAYOUT RULES — Canvas ${cw}×${ch}px, NO overlaps. Apply PROFESSIONAL dashboard design science:
+
+DESIGN PRINCIPLES (Stephen Few, Edward Tufte, Microsoft guidelines):
+1. VISUAL HIERARCHY: most important KPIs top-left (eyes land there first). Size = importance: big visual="this matters", small="reference".
+2. SCANNING PATTERN: users read top→bottom, left→right (Z-pattern). Layout must follow this: overview at top, detail at bottom.
+3. 8PX GRID SYSTEM: ALL gaps, margins and spacing in multiples of 8 (8,16,24). This is non-negotiable for professional polish.
+4. WHITESPACE: leave breathing room. Don't cram. Consistent margins (16px from canvas edges).
+5. GROUPING: related visuals share alignment and spacing. Misalignment = unprofessional.
+6. PROGRESSIVE DISCLOSURE: KPIs (glance) → charts (trends) → tables (detail).
+
+ZONE STRUCTURE (apply the 8px grid):
+- header: x=0, y=0, w=${cw}, h=56
+- nav-left: x=0, y=56, w=192, h=${ch}-56  (or nav-top: full width h=48)
+- content margin: 16px from nav and from canvas right/bottom edges
+- content_x = nav.width+16, content_w = ${cw}-content_x-16
+
+ROW 0 — Filter bar (slicers): y=content_y+16, h=40. ALL slicers horizontal here, NEVER at bottom.
+ROW 1 — KPIs (the hero metrics): y=ROW0.bottom+16, h=96. Equal widths, 16px gaps. 3-5 KPIs max.
+   kpi_w = floor((content_w-(n-1)*16)/n)
+ROW 2 — Primary charts (trends): y=ROW1.bottom+16, h=216. Usually 2 charts, 16px gap.
+ROW 3 — Detail (tables/secondary): y=ROW2.bottom+16, fill remaining height-16. Tables and breakdowns.
+
+TITLES: descriptive, not generic. "Ventas por Región" not "Gráfico 1". Titles teach what the user learns.
+COLOR DISCIPLINE: 3-5 colors max. Accent for emphasis, neutrals for structure. Never rainbow.
+VERIFY every element: x+w≤${cw} AND y+h≤${ch}. Gaps are multiples of 8. No overlaps. Aligned edges.
+
+STRICT DEFAULT: canvasTheme=null unless user EXPLICITLY mentions colors/dark/brand/theme.`;}
+
+
+// Intenta parsear JSON; si está truncado, lo repara recortando al último
+// elemento completo y balanceando llaves/corchetes
+function tryParseLayout(raw){
+  const clean=raw.replace(/```json\n?|```/g,"").trim();
+  try{return JSON.parse(clean);}catch(e){}
+  // Reparación: recortar al último "}" y balancear cierres
+  let cut=clean.lastIndexOf("}");
+  let attempts=0;
+  while(cut>0&&attempts<30){
+    let frag=clean.slice(0,cut+1);
+    const oB=(frag.match(/{/g)||[]).length-(frag.match(/}/g)||[]).length;
+    const oA=(frag.match(/\[/g)||[]).length-(frag.match(/]/g)||[]).length;
+    // El schema cierra arrays antes que el objeto raíz: ] primero, } después
+    const repaired=frag+"]".repeat(Math.max(0,oA))+"}".repeat(Math.max(0,oB));
+    try{return JSON.parse(repaired);}catch(e){}
+    cut=clean.lastIndexOf("}",cut-1);
+    attempts++;
+  }
+  return null;
+}
+
+async function callAI(msgs,cw=960,ch=580,currentState=null){
   try{
-    const token = localStorage.getItem('token');
-    if (!token) {
-      return { text: "Error: No has iniciado sesión", layout: null };
+    let sys=AI_SYS(cw,ch);
+    if(currentState&&currentState.elements&&currentState.elements.length){
+      const compact=currentState.elements.map(e=>({id:e.id,type:e.type,x:e.x,y:e.y,w:e.w,h:e.h,label:e.label}));
+      sys+=`\n\nCURRENT_STATE (el reporte actual en el canvas — úsalo para "mode":"update"):\n`+
+        `canvasTheme: ${JSON.stringify(currentState.ct)}\n`+
+        `elements: ${JSON.stringify(compact)}`;
+    }else{
+      sys+=`\n\nCURRENT_STATE: (canvas vacío — cualquier petición es "mode":"replace")`;
     }
-    const response = await fetch('http://localhost:3001/api/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify({
-        messages: msgs,
-        system: AI_SYS
-      })
+    const token=localStorage.getItem('token');
+    if(!token)return{text:"⚠️ No has iniciado sesión. Por favor inicia sesión para usar el asistente.",layout:null,audit:null};
+    const res=await fetch('http://localhost:3001/api/generate',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':`Bearer ${token}`},
+      body:JSON.stringify({messages:msgs,system:sys}),
     });
-    const data = await response.json();
-    if (!response.ok) {
-      return { text: `Error ${response.status}: ${data.error || 'Desconocido'}`, layout: null };
+    const data=await res.json();
+    if(!res.ok){
+      const msg=data?.error||`HTTP ${res.status}`;
+      return{text:`⚠️ Error API: ${msg}`,layout:null,audit:null};
     }
-    return { text: data.text, layout: data.layout };
-  } catch(e){
-    console.error('callAI error:', e);
-    return { text: `Error de red: ${e.message}`, layout: null };
+    // Backend devuelve { text, layout } — layout ya extraído y normalizado por el servidor
+    // Detectar bloque <AUDIT> que puede venir dentro del texto (el backend no lo extrae)
+    let audit=null;
+    let cleanText=data.text||'';
+    const auditM=cleanText.match(/<audit>([\s\S]*?)<\/audit>/i);
+    if(auditM){
+      try{audit=JSON.parse(auditM[1].trim());}catch(e){}
+      cleanText=cleanText.replace(/<audit>[\s\S]*?<\/audit>/gi,'').trim();
+    }
+    return{text:cleanText,layout:data.layout,audit};
+  }catch(e){
+    return{text:`⚠️ Error de red: ${e.message}`,layout:null,audit:null};
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// VISUALS (KPICard, BarChart, LineChart, etc.) - se mantienen igual
-// (omitidos por brevedad, pero están en el código original completo)
+// VISUALS  (pointerEvents nunca se tocan aquí — se bloquean en CanvasEl)
 // ═══════════════════════════════════════════════════════════════════
-function DEFAULT_DATA() {
-  const randomValue = (Math.random() * 1000).toFixed(0);
-  const randomChange = (Math.random() * 20 - 10).toFixed(1);
-  const isUp = randomChange > 0;
-  const trend = [20, 30, 40, 50, 60, 70].map(v => v * (Math.random() * 0.5 + 0.75));
-  return [`$${randomValue}K`, Math.abs(randomChange), isUp, trend];
-}
-
-function KPICard({el, ct}) {
-  // Datos predefinidos para algunos labels
-  const PREDEFINED = {
-    "Total Revenue": ["$2.41M", 12.3, true, [1.8,2.0,1.9,2.1,2.2,2.41]],
-    "Units Sold": ["8,432", 5.7, true, [6.5,7.1,7.4,7.9,8.1,8.4]],
-    "Avg. Deal": ["$28.6K", -2.1, false, [31,30,29.5,29,28.8,28.6]],
-    "Win Rate %": ["34.8%", 1.2, true, [32,33,33.5,34,34.5,34.8]],
-    "Producción Diaria": ["1,240", 5.2, true, [1100,1150,1180,1200,1220,1240]],
-    "Unidades Producidas": ["1,240", 5.2, true, [1100,1150,1180,1200,1220,1240]],
-    "Eficiencia de Línea": ["94.2%", 2.1, true, [89,91,92,93,93.5,94.2]],
-    "Tasa de Defectos": ["3.8%", -1.2, false, [4.5,4.2,4.0,3.9,3.8,3.7]],
-    "Tiempo de Ciclo": ["28.4min", -3.5, true, [32,31,30,29,28.5,28.4]],
-    "Nivel de Inventario": ["2,450", 8.3, true, [2100,2200,2300,2350,2400,2450]]
-  };
-
-  // Generar datos por defecto (random pero realistas)
-  const getDefaultData = (label) => {
-    let value, change, isUp, trend;
-    if (label.toLowerCase().includes('porcentaje') || label.toLowerCase().includes('tasa') || label.includes('%')) {
-      value = `${(Math.random() * 30 + 70).toFixed(1)}%`;
-      change = (Math.random() * 10 - 5).toFixed(1);
-      isUp = change > 0;
-      trend = [70,72,75,78,80,82].map(v => v * (0.8 + Math.random() * 0.4));
-    } else if (label.toLowerCase().includes('tiempo') || label.toLowerCase().includes('ciclo')) {
-      value = `${(Math.random() * 30 + 15).toFixed(0)}min`;
-      change = (Math.random() * 10 - 5).toFixed(1);
-      isUp = change > 0;
-      trend = [25,24,23,22,21,20].map(v => v * (0.9 + Math.random() * 0.2));
-    } else if (label.toLowerCase().includes('unidades') || label.toLowerCase().includes('producción')) {
-      value = `${Math.floor(Math.random() * 2000 + 500)}`;
-      change = (Math.random() * 20 - 10).toFixed(1);
-      isUp = change > 0;
-      trend = [500,700,900,1100,1200,1300].map(v => v * (0.8 + Math.random() * 0.4));
-    } else {
-      value = `$${(Math.random() * 500 + 100).toFixed(0)}K`;
-      change = (Math.random() * 20 - 10).toFixed(1);
-      isUp = change > 0;
-      trend = [100,150,200,250,300,350].map(v => v * (0.7 + Math.random() * 0.6));
-    }
-    return [value, Math.abs(change), isUp, trend];
-  };
-
-  const [v, chg, up, pts] = PREDEFINED[el.label] || getDefaultData(el.label);
-  const W = 58, H = 22;
-  const mn = Math.min(...pts);
-  const mx = Math.max(...pts);
-  const rng = mx - mn || 1;
-  const sp = pts.map((p, i) => `${(i / (pts.length - 1)) * W},${H - ((p - mn) / rng) * H}`).join(" ");
-
-  return (
-    <div style={{ width: "100%", height: "100%", background: ct.cardBg, border: `1px solid ${ct.cardBorder}`, borderRadius: ct.r, padding: "11px 13px", display: "flex", flexDirection: "column", justifyContent: "space-between", overflow: "hidden", boxSizing: "border-box" }}>
-      <div style={{ fontSize: 8, color: ct.textMuted, textTransform: "uppercase", letterSpacing: 1.2, fontFamily: "'Segoe UI', sans-serif", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{el.label}</div>
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between" }}>
-        <div style={{ overflow: "hidden" }}>
-          <div style={{ fontSize: Math.max(15, Math.min(26, el.w / 7)), fontWeight: 700, color: ct.text, letterSpacing: -0.5, lineHeight: 1.1, fontFamily: "'Segoe UI', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{v}</div>
-          {el.h > 70 && <div style={{ fontSize: 9, color: up ? ct.success : ct.danger, display: "flex", alignItems: "center", gap: 2, marginTop: 2 }}>
-            <span>{up ? "▲" : "▼"}</span>
-            <span style={{ fontWeight: 600 }}>{Math.abs(chg)}%</span>
-            <span style={{ color: ct.textMuted, marginLeft: 2 }}>vs prev</span>
+function KPICard({el,ct}){
+  const D={"Total Revenue":["$2.41M",12.3,true,[1.8,2.0,1.9,2.1,2.2,2.41]],"Units Sold":["8,432",5.7,true,[6.5,7.1,7.4,7.9,8.1,8.4]],"Avg. Deal":["$28.6K",-2.1,false,[31,30,29.5,29,28.8,28.6]],"Win Rate %":["34.8%",1.2,true,[32,33,33.5,34,34.5,34.8]],"Net Revenue":["$1.8M",8.7,true,[1.4,1.5,1.6,1.65,1.72,1.8]],"EBITDA":["$540K",14.2,true,[380,420,450,480,510,540]],"Net Margin":["29.8%",2.1,true,[26,27,28,28.5,29.2,29.8]],"Cash Flow":["$320K",-3.4,false,[370,360,350,340,330,320]],"Headcount":["1,248",3.2,true,[1100,1150,1180,1210,1230,1248]],"Attrition %":["8.4%",-1.1,true,[10,9.5,9,8.9,8.6,8.4]],"Impressions":["2.4M",18,true,[1.6,1.8,2.0,2.1,2.25,2.4]],"CTR %":["3.2%",0.4,true,[2.7,2.8,2.9,3.0,3.1,3.2]],"Conversions":["12,841",9.3,true,[9500,10200,11000,11500,12100,12841]],"CAC":["$48",-12,true,[60,57,54,52,50,48]],"ROAS":["4.2x",8.1,true,[3.1,3.4,3.6,3.8,4.0,4.2]],"Deliveries":["4,821",6.1,true,[3800,4100,4300,4500,4650,4821]],"On-Time %":["94.2%",1.8,true,[90,91.5,92,93,93.5,94.2]]};
+  const[v,chg,up,pts]=D[el.label]||["—",0,true,[20,30,25,40,35,45]];
+  const W=58,H=22,mn=Math.min(...pts),mx=Math.max(...pts),rng=mx-mn||1;
+  const sp=pts.map((p,i)=>`${(i/(pts.length-1))*W},${H-((p-mn)/rng)*H}`).join(" ");
+  return(
+    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"11px 13px",display:"flex",flexDirection:"column",justifyContent:"space-between",overflow:"hidden",boxSizing:"border-box"}}>
+      <div style={{fontSize:8,color:ct.textMuted,textTransform:"uppercase",letterSpacing:1.2,fontFamily:"'Segoe UI',sans-serif",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{el.label}</div>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
+        <div style={{overflow:"hidden"}}>
+          <div style={{fontSize:Math.max(15,Math.min(26,el.w/7)),fontWeight:700,color:ct.text,letterSpacing:-0.5,lineHeight:1.1,fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v}</div>
+          {el.h>70&&<div style={{fontSize:9,color:up?ct.success:ct.danger,display:"flex",alignItems:"center",gap:2,marginTop:2}}>
+            <span>{up?"▲":"▼"}</span><span style={{fontWeight:600}}>{Math.abs(chg)}%</span>
+            <span style={{color:ct.textMuted,marginLeft:2}}>vs prev</span>
           </div>}
         </div>
-        {el.w > 120 && el.h > 65 && <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ flexShrink: 0, marginLeft: 6 }}>
-          <polyline points={sp} fill="none" stroke={up ? ct.success : ct.danger} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
+        {el.w>120&&el.h>65&&<svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{flexShrink:0,marginLeft:6}}>
+          <polyline points={sp} fill="none" stroke={up?ct.success:ct.danger} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.85"/>
         </svg>}
       </div>
     </div>
@@ -430,43 +525,21 @@ function DonutChart({el,ct}){
     </div>
   );
 }
-
-function TableViz({el, ct}) {
-  // Generar datos dummy según el contexto
-  const generateRows = (label) => {
-    if (label.toLowerCase().includes("producción") || label.toLowerCase().includes("lote")) {
-      return [
-        ["Lote A", "Línea 1", "1,240", "98.2%", "0.8%"],
-        ["Lote B", "Línea 1", "1,180", "97.5%", "1.2%"],
-        ["Lote C", "Línea 2", "1,350", "99.1%", "0.5%"],
-        ["Lote D", "Línea 2", "1,210", "96.8%", "1.5%"],
-        ["Lote E", "Línea 3", "1,090", "98.7%", "0.9%"]
-      ];
-    }
-    // Datos por defecto
-    return [
-      ["Producto A", "Categoría 1", "$12,400", "324", "12%"],
-      ["Producto B", "Categoría 2", "$8,700", "580", "8%"],
-      ["Producto C", "Categoría 1", "$15,300", "418", "15%"],
-      ["Producto D", "Categoría 3", "$9,800", "340", "10%"]
-    ];
-  };
-
-  const cols = ["Item", "Detalle", "Valor", "Cantidad", "Margen"];
-  const rows = generateRows(el.label);
-  const vC = Math.max(2, Math.floor((el.w - 24) / 75));
-  const vR = Math.max(2, Math.floor((el.h - 52) / 24));
-
-  return (
-    <div style={{ width: "100%", height: "100%", background: ct.cardBg, border: `1px solid ${ct.cardBorder}`, borderRadius: ct.r, overflow: "hidden", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
-      <div style={{ fontSize: 10, fontWeight: 700, color: ct.text, padding: "10px 12px 6px", flexShrink: 0, fontFamily: "'Segoe UI', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{el.label}</div>
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0 }}>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${vC}, 1fr)`, background: rgba(ct.accent, 0.08), borderBottom: `2px solid ${rgba(ct.accent, 0.3)}`, flexShrink: 0 }}>
-          {cols.slice(0, vC).map(c => <div key={c} style={{ padding: "5px 10px", fontSize: 9, fontWeight: 700, color: ct.accent, fontFamily: "'Segoe UI', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c} <span style={{ opacity: 0.4, fontSize: 7 }}>⇅</span></div>)}
+function TableViz({el,ct}){
+  const cols=["Product","Category","Sales","Units","Margin"];
+  const rows=[["Laptop Pro","Electronics","$48,200","324","32%"],["Wireless Mouse","Accessories","$12,400","892","45%"],["Monitor 27\"","Electronics","$38,600","210","28%"],["USB-C Hub","Accessories","$8,700","580","52%"],["Keyboard","Accessories","$15,300","418","41%"],["Webcam HD","Electronics","$9,800","340","38%"]];
+  const vC=Math.max(2,Math.floor((el.w-24)/75));
+  const vR=Math.max(2,Math.floor((el.h-52)/24));
+  return(
+    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column"}}>
+      <div style={{fontSize:10,fontWeight:700,color:ct.text,padding:"10px 12px 6px",flexShrink:0,fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{el.label}</div>
+      <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",minHeight:0}}>
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${vC},1fr)`,background:rgba(ct.accent,0.08),borderBottom:`2px solid ${rgba(ct.accent,0.3)}`,flexShrink:0}}>
+          {cols.slice(0,vC).map(c=><div key={c} style={{padding:"5px 10px",fontSize:9,fontWeight:700,color:ct.accent,fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c} <span style={{opacity:0.4,fontSize:7}}>⇅</span></div>)}
         </div>
-        {rows.slice(0, vR).map((row, i) => (
-          <div key={i} style={{ display: "grid", gridTemplateColumns: `repeat(${vC}, 1fr)`, background: i % 2 === 1 ? rgba(ct.accent, 0.03) : "transparent", borderBottom: `1px solid ${rgba(ct.cardBorder, 0.6)}`, flexShrink: 0 }}>
-            {row.slice(0, vC).map((cell, j) => <div key={j} style={{ padding: "5px 10px", fontSize: 9, color: j === 0 ? ct.text : ct.textSub, fontFamily: j > 1 ? "monospace" : "'Segoe UI', sans-serif", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: j === 0 ? 500 : 400 }}>{cell}</div>)}
+        {rows.slice(0,vR).map((row,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:`repeat(${vC},1fr)`,background:i%2===1?rgba(ct.accent,0.03):"transparent",borderBottom:`1px solid ${rgba(ct.cardBorder,0.6)}`,flexShrink:0}}>
+            {row.slice(0,vC).map((cell,j)=><div key={j} style={{padding:"5px 10px",fontSize:9,color:j===0?ct.text:ct.textSub,fontFamily:j>1?"monospace":"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:j===0?500:400}}>{cell}</div>)}
           </div>
         ))}
       </div>
@@ -474,6 +547,38 @@ function TableViz({el, ct}) {
   );
 }
 function SlicerViz({el,ct}){
+  // Detectar orientación: si es ancho y bajo (barra de filtros) → horizontal con dropdowns
+  const horiz=el.w>el.h*2.2;
+  // Parsear el label para extraer los filtros: "Filtros: Fundo · Variedad · Campaña"
+  const parseFilters=(lbl)=>{
+    const m=(lbl||"").split(/:\s*/);
+    const tail=m.length>1?m.slice(1).join(":"):lbl;
+    return tail.split(/[·,|]/).map(s=>s.trim()).filter(Boolean);
+  };
+
+  if(horiz){
+    const filters=parseFilters(el.label);
+    const chips=filters.length?filters:["Filtro 1","Filtro 2"];
+    return(
+      <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,overflow:"hidden",boxSizing:"border-box",display:"flex",alignItems:"center",gap:8,padding:"0 12px"}}>
+        <span style={{fontSize:9,fontWeight:700,color:ct.textMuted,textTransform:"uppercase",letterSpacing:0.8,fontFamily:"'Segoe UI',sans-serif",flexShrink:0,display:"flex",alignItems:"center",gap:5}}>
+          <span style={{fontSize:11}}>⛛</span>Filtros
+        </span>
+        <div style={{display:"flex",gap:8,flex:1,overflow:"hidden"}}>
+          {chips.map((f,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+              padding:"0 10px",height:26,borderRadius:6,border:`1px solid ${ct.cardBorder}`,
+              background:rgba(ct.secondary,0.55),flex:`1 1 0`,minWidth:0,maxWidth:200}}>
+              <span style={{fontSize:9,color:ct.textSub,fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontWeight:500}}>{f}</span>
+              <span style={{fontSize:7,color:ct.textMuted,flexShrink:0}}>▾</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Vertical (lista de checkboxes) — cuando el slicer es alto
   const opts=["All Periods","FY 2024","FY 2023","Q4 2024","Q3 2024","Q2 2024","Q1 2024"];
   const vis=Math.max(3,Math.floor((el.h-60)/28));
   return(
@@ -499,26 +604,54 @@ function SlicerViz({el,ct}){
   );
 }
 function NavViz({el,ct,navCfg}){
-  const items=[{l:"Dashboard",i:"⊞"},{l:"Analytics",i:"📊"},{l:"Finance",i:"💰"},{l:"HR",i:"👥"},{l:"Reports",i:"📋"},{l:"Settings",i:"⚙"}];
-  const horiz=navCfg?.position==="top";
+  const nav=navCfg||NAV_DEFAULT;
+  const c=nav.colors||{};
+  const pages=(nav.pages&&nav.pages.length)?nav.pages:NAV_DEFAULT.pages;
+  // Horizontal si la config dice "top" O si el elemento es más ancho que alto (vista móvil apilada)
+  const horiz=nav.position==="top"||(el&&el.w>el.h*1.5);
+  // El nav deriva un tono SUAVE del tema (mezcla acento con el fondo del canvas).
+  // En canvas claro: tono claro tintado del acento. En oscuro: tono oscuro tintado.
+  const themeNavBg=(()=>{
+    const base=ct.headerBg||ct.accent2||ct.accent||"#1e293b";
+    const canvasC=ct.canvas||"#ffffff";
+    // Mezclar el color base hacia el fondo del canvas → más suave, integrado al diseño
+    return isDark(canvasC)?mix(base,canvasC,0.45):mix(base,canvasC,0.78);
+  })();
+  const navBg=c.bgCustom?c.bg:themeNavBg;
+  // Texto del nav: contraste según si el nav quedó claro u oscuro
+  const navIsDark=isDark(navBg);
+  const accent=c.selectedCustom?c.selected:(ct.accent||c.accent||c.selected);
+  const txtActive=c.textActiveCustom?c.textActive:(navIsDark?"#ffffff":(ct.text||"#1e293b"));
+  const txtInactive=c.textInactiveCustom?c.textInactive:(navIsDark?rgba("#ffffff",0.65):rgba(ct.text||"#1e293b",0.6));
+  const activeIdx=pages.findIndex(p=>p.active);
+  const actI=activeIdx>=0?activeIdx:0;
+  const fs=nav.fontSize||9;
   return(
-    <div style={{width:"100%",height:"100%",background:rgba(ct.secondary,0.9),borderRadius:ct.r,border:`1px solid ${ct.cardBorder}`,overflow:"hidden",display:"flex",flexDirection:horiz?"row":"column"}}>
-      {!horiz&&<div style={{padding:"14px 12px 10px",borderBottom:`1px solid ${ct.cardBorder}`,flexShrink:0}}>
+    <div style={{width:"100%",height:"100%",background:navBg,borderRadius:ct.r,border:`1px solid ${rgba("#000000",0.1)}`,overflow:"hidden",display:"flex",flexDirection:horiz?"row":"column"}}>
+      {!horiz&&<div style={{padding:"14px 12px 10px",borderBottom:`1px solid ${rgba(txtInactive,0.2)}`,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${ct.accent},${ct.accent2||ct.accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff",flexShrink:0}}>⬡</div>
-          <div>
-            <div style={{fontSize:10,fontWeight:700,color:ct.accent,whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>Analytics Hub</div>
-            <div style={{fontSize:7,color:ct.textMuted,fontFamily:"monospace",letterSpacing:0.8}}>POWER BI</div>
+          {nav.logoUrl
+            ?<img src={directImageUrl(nav.logoUrl)} alt="" style={{width:26,height:26,borderRadius:6,objectFit:"contain",flexShrink:0}} onError={e=>{e.currentTarget.style.display="none";}}/>
+            :<div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${accent},${ct.accent2||accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff",flexShrink:0}}>⬡</div>}
+          <div style={{overflow:"hidden"}}>
+            <div style={{fontSize:10,fontWeight:700,color:txtActive,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:"'Segoe UI',sans-serif"}}>{nav.reportName||"Mi Reporte"}</div>
+            <div style={{fontSize:7,color:txtInactive,fontFamily:"monospace",letterSpacing:0.8}}>POWER BI</div>
           </div>
         </div>
       </div>}
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:horiz?"row":"column",padding:horiz?"0":"6px 0"}}>
-        {items.map((item,idx)=>(
-          <div key={item.l} style={{display:"flex",alignItems:"center",gap:7,padding:horiz?"8px 14px":"7px 12px",background:idx===0?rgba(ct.accent,0.12):"transparent",borderLeft:!horiz?`3px solid ${idx===0?ct.accent:"transparent"}`:"none",borderBottom:horiz?`2px solid ${idx===0?ct.accent:"transparent"}`:"none",flexShrink:0}}>
-            <span style={{fontSize:11}}>{item.i}</span>
-            <span style={{fontSize:9,color:idx===0?ct.text:ct.textSub,fontFamily:"'Segoe UI',sans-serif",fontWeight:idx===0?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.l}</span>
-          </div>
-        ))}
+        {pages.map((p,idx)=>{
+          const on=idx===actI;
+          return(
+            <div key={p.id??idx} style={{display:"flex",alignItems:"center",gap:7,padding:horiz?"8px 14px":"7px 12px",
+              background:on?rgba(accent,(c.selectedOpacity??25)/100):"transparent",
+              borderLeft:!horiz?`3px solid ${on?accent:"transparent"}`:"none",
+              borderBottom:horiz?`2px solid ${on?accent:"transparent"}`:"none",flexShrink:0,minWidth:0}}>
+              <span style={{fontSize:11,flexShrink:0}}>{p.icon}</span>
+              <span style={{fontSize:fs,color:on?txtActive:txtInactive,fontFamily:"'Segoe UI',sans-serif",fontWeight:on?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.label}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -542,12 +675,140 @@ function TextCard({el,ct}){return <div style={{width:"100%",height:"100%",backgr
 function ButtonViz({el,ct}){return <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}><div style={{padding:"8px 18px",borderRadius:ct.r-2,background:`linear-gradient(135deg,${ct.accent},${ct.accent2||ct.accent})`,fontSize:10,fontWeight:600,color:"#fff",boxShadow:`0 3px 10px ${rgba(ct.accent,0.4)}`,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:"90%",fontFamily:"'Segoe UI',sans-serif"}}>{el.label||"Button"}</div></div>;}
 function ImageViz({el,ct}){return <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`2px dashed ${ct.cardBorder}`,borderRadius:ct.r,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:6}}><span style={{fontSize:22,opacity:0.25}}>🖼</span><span style={{fontSize:8,color:ct.textMuted,fontFamily:"monospace"}}>Image / Logo</span></div>;}
 
+// ── VISUALES NUEVOS ───────────────────────────────────────────────
+function GaugeViz({el,ct}){
+  const pct=72, angle=-90+pct/100*180;
+  const cx=60,cy=60,r=44;
+  const arc=(from,to,col,w)=>{
+    const a0=(from-90)*Math.PI/180,a1=(to-90)*Math.PI/180;
+    const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0);
+    const x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+    const laf=to-from>180?1:0;
+    return(<path d={`M${x0},${y0} A${r},${r},0,${laf},1,${x1},${y1}`} fill="none" stroke={col} strokeWidth={w} strokeLinecap="round"/>);
+  };
+  return(
+    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"10px 12px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column"}}>
+      <div style={{fontSize:10,fontWeight:700,color:ct.text,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{el.label}</div>
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",minHeight:0}}>
+        <svg width="120" height="78" viewBox="0 0 120 70">
+          {arc(0,180,rgba(ct.accent,0.15),9)}
+          {arc(0,pct/100*180,ct.accent,9)}
+          <line x1={cx} y1={cy} x2={cx+34*Math.cos(angle*Math.PI/180)} y2={cy+34*Math.sin(angle*Math.PI/180)} stroke={ct.text} strokeWidth="2.5" strokeLinecap="round"/>
+          <circle cx={cx} cy={cy} r="4" fill={ct.text}/>
+          <text x={cx} y={cy-14} textAnchor="middle" fontSize="15" fontWeight="700" fill={ct.text} fontFamily="'Segoe UI',sans-serif">{pct}%</text>
+        </svg>
+      </div>
+    </div>
+  );
+}
+function MatrixViz({el,ct}){
+  const rows=["Norte","Sur","Este","Oeste"];
+  const cols=["Q1","Q2","Q3","Q4"];
+  const data=[[120,145,98,160],[88,92,110,75],[200,180,220,195],[60,70,55,80]];
+  const max=220;
+  const vR=Math.max(2,Math.min(rows.length,Math.floor((el.h-56)/26)));
+  return(
+    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column"}}>
+      <div style={{fontSize:10,fontWeight:700,color:ct.text,padding:"10px 12px 6px",fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{el.label}</div>
+      <div style={{flex:1,overflow:"hidden",padding:"0 8px 8px"}}>
+        <div style={{display:"grid",gridTemplateColumns:`70px repeat(${cols.length},1fr)`,gap:2}}>
+          <div/>
+          {cols.map(c=><div key={c} style={{fontSize:8,fontWeight:700,color:ct.textSub,textAlign:"center",padding:"2px",fontFamily:"monospace"}}>{c}</div>)}
+          {rows.slice(0,vR).map((r,ri)=>(
+            <>
+              <div key={r} style={{fontSize:8,color:ct.textSub,display:"flex",alignItems:"center",fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r}</div>
+              {data[ri].map((v,ci)=>(
+                <div key={ci} style={{fontSize:8,fontWeight:600,textAlign:"center",padding:"4px 2px",borderRadius:3,fontFamily:"monospace",
+                  background:rgba(ct.accent,0.08+0.5*v/max),color:v/max>0.5?"#fff":ct.text}}>{v}</div>
+              ))}
+            </>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+function ScatterViz({el,ct}){
+  const pts=[[20,70],[35,55],[45,60],[55,38],[62,45],[70,28],[78,35],[85,20],[30,65],[50,48],[68,40],[40,58]];
+  return(
+    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"10px 12px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column"}}>
+      <div style={{fontSize:10,fontWeight:700,color:ct.text,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{el.label}</div>
+      <div style={{flex:1,minHeight:0}}>
+        <svg width="100%" height="100%" viewBox="0 0 100 80" preserveAspectRatio="none">
+          <line x1="8" y1="72" x2="96" y2="72" stroke={ct.cardBorder} strokeWidth="0.5"/>
+          <line x1="8" y1="8" x2="8" y2="72" stroke={ct.cardBorder} strokeWidth="0.5"/>
+          {pts.map(([x,y],i)=><circle key={i} cx={8+x*0.88} cy={y} r="2.5" fill={rgba(ct.accent,0.7)}/>)}
+        </svg>
+      </div>
+    </div>
+  );
+}
+function TreemapViz({el,ct}){
+  const blocks=[
+    {l:"Electrónica",v:42,c:ct.accent},{l:"Ropa",v:24,c:ct.accent2||ct.accent},
+    {l:"Hogar",v:18,c:rgba(ct.accent,0.6)},{l:"Deporte",v:10,c:rgba(ct.accent,0.4)},
+    {l:"Otros",v:6,c:rgba(ct.accent,0.25)},
+  ];
+  return(
+    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"10px 12px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column"}}>
+      <div style={{fontSize:10,fontWeight:700,color:ct.text,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{el.label}</div>
+      <div style={{flex:1,display:"flex",gap:2,minHeight:0,overflow:"hidden"}}>
+        <div style={{flex:42,display:"flex",flexDirection:"column",gap:2}}>
+          <div style={{flex:1,background:blocks[0].c,borderRadius:3,padding:6,display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+            <div style={{fontSize:8,fontWeight:700,color:"#fff",fontFamily:"'Segoe UI',sans-serif"}}>{blocks[0].l}</div>
+            <div style={{fontSize:9,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{blocks[0].v}%</div>
+          </div>
+        </div>
+        <div style={{flex:58,display:"flex",flexDirection:"column",gap:2}}>
+          <div style={{flex:24,display:"flex",gap:2}}>
+            {[blocks[1],blocks[2]].map((b,i)=>(
+              <div key={i} style={{flex:b.v,background:b.c,borderRadius:3,padding:5,display:"flex",flexDirection:"column",justifyContent:"flex-end",overflow:"hidden"}}>
+                <div style={{fontSize:7,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{b.l}</div>
+                <div style={{fontSize:8,fontWeight:700,color:"#fff",fontFamily:"monospace"}}>{b.v}%</div>
+              </div>
+            ))}
+          </div>
+          <div style={{flex:16,display:"flex",gap:2}}>
+            {[blocks[3],blocks[4]].map((b,i)=>(
+              <div key={i} style={{flex:b.v,background:b.c,borderRadius:3,padding:4,display:"flex",alignItems:"flex-end",overflow:"hidden"}}>
+                <div style={{fontSize:7,fontWeight:600,color:ct.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{b.l} {b.v}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+function KpiSparkViz({el,ct}){
+  const data=[30,45,38,52,48,65,58,72,68,80];
+  const max=Math.max(...data),min=Math.min(...data);
+  const pts=data.map((v,i)=>`${i*(100/(data.length-1))},${30-((v-min)/(max-min))*26}`).join(" ");
+  return(
+    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"11px 13px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+      <div style={{fontSize:9,fontWeight:600,color:ct.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{el.label}</div>
+      <div style={{fontSize:22,fontWeight:800,color:ct.text,fontFamily:"'Segoe UI',sans-serif",lineHeight:1}}>$84.2K</div>
+      <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:8}}>
+        <span style={{fontSize:9,fontWeight:600,color:ct.success||"#059669",fontFamily:"monospace"}}>▲ 12.4%</span>
+        <svg width="60%" height="28" viewBox="0 0 100 30" preserveAspectRatio="none" style={{flexShrink:0}}>
+          <polyline points={pts} fill="none" stroke={ct.accent} strokeWidth="2" vectorEffect="non-scaling-stroke"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function Visual({el,ct,navCfg,hdrCfg}){
   switch(el.type){
     case"kpi":return <KPICard el={el} ct={ct}/>;
+    case"kpispark":return <KpiSparkViz el={el} ct={ct}/>;
     case"bar":return <BarChart el={el} ct={ct}/>;
     case"line":return <LineChart el={el} ct={ct}/>;
     case"pie":return <DonutChart el={el} ct={ct}/>;
+    case"gauge":return <GaugeViz el={el} ct={ct}/>;
+    case"matrix":return <MatrixViz el={el} ct={ct}/>;
+    case"scatter":return <ScatterViz el={el} ct={ct}/>;
+    case"treemap":return <TreemapViz el={el} ct={ct}/>;
     case"table":return <TableViz el={el} ct={ct}/>;
     case"slicer":return <SlicerViz el={el} ct={ct}/>;
     case"nav":return <NavViz el={el} ct={ct} navCfg={navCfg}/>;
@@ -560,74 +821,449 @@ function Visual({el,ct,navCfg,hdrCfg}){
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// CANVAS ELEMENT
+// CANVAS ELEMENT — selección y resize SIEMPRE funcionan
+// Clave: pointerEvents:none en el wrapper del visual
 // ═══════════════════════════════════════════════════════════════════
-function CanvasEl({el,ct,selected,onSelect,onUpdate,onCommit,snapGrid,navCfg,hdrCfg,zoom}){
-  const op=useRef({mode:null,sx:0,sy:0,ox:0,oy:0,ow:0,oh:0,hdx:0,hdy:0,hdw:0,hdh:0});
+// ── CanvasEl — drag + visual únicamente (handles en HandleOverlay)──
+function CanvasEl({el,ct,selected,onSelect,onUpdate,onCommit,snapGrid,navCfg,hdrCfg,zoom,CW,CH,allEls,onGuides}){
+  const op=useRef({sx:0,sy:0,ox:0,oy:0});
+
   const beginDrag=e=>{
     e.stopPropagation();
     onSelect(el.id);
-    op.current={mode:"drag",sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y,ow:el.w,oh:el.h};
-    bind();
+    op.current={sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y};
+    const z=zoom;
+    const SNAP=6; // umbral de imán en px de canvas
+    const others=(allEls||[]).filter(o=>o.id!==el.id);
+    const mv=e=>{
+      const ddx=(e.clientX-op.current.sx)/z;
+      const ddy=(e.clientY-op.current.sy)/z;
+      let nx=snapGrid?snap(op.current.ox+ddx):Math.round(op.current.ox+ddx);
+      let ny=snapGrid?snap(op.current.oy+ddy):Math.round(op.current.oy+ddy);
+      nx=Math.max(0,Math.min(CW-el.w,nx));
+      ny=Math.max(0,Math.min(CH-el.h,ny));
+
+      // ── Guías inteligentes: alinear con bordes/centros de otros + canvas ──
+      const guides=[];
+      const myL=nx, myR=nx+el.w, myCX=nx+el.w/2;
+      const myT=ny, myB=ny+el.h, myCY=ny+el.h/2;
+      // Líneas verticales candidatas (x): bordes y centros de otros + canvas
+      const vTargets=[{v:0,t:"edge"},{v:CW,t:"edge"},{v:CW/2,t:"center"}];
+      const hTargets=[{v:0,t:"edge"},{v:CH,t:"edge"},{v:CH/2,t:"center"}];
+      others.forEach(o=>{
+        vTargets.push({v:o.x,t:"edge"},{v:o.x+o.w,t:"edge"},{v:o.x+o.w/2,t:"center"});
+        hTargets.push({v:o.y,t:"edge"},{v:o.y+o.h,t:"edge"},{v:o.y+o.h/2,t:"center"});
+      });
+      // Snap X: probar left, center, right del elemento contra cada target
+      let bestVX=null,bestVDist=SNAP+1;
+      vTargets.forEach(({v,t})=>{
+        [["L",myL,0],["CX",myCX,el.w/2],["R",myR,el.w]].forEach(([k,val,off])=>{
+          const d=Math.abs(val-v);
+          if(d<bestVDist){bestVDist=d;bestVX={lineX:v,newX:v-off,kind:t};}
+        });
+      });
+      if(bestVX){nx=Math.max(0,Math.min(CW-el.w,bestVX.newX));guides.push({type:"v",pos:bestVX.lineX,kind:bestVX.kind});}
+      // Snap Y
+      let bestHY=null,bestHDist=SNAP+1;
+      hTargets.forEach(({v,t})=>{
+        [["T",myT,0],["CY",myCY,el.h/2],["B",myB,el.h]].forEach(([k,val,off])=>{
+          const d=Math.abs(val-v);
+          if(d<bestHDist){bestHDist=d;bestHY={lineY:v,newY:v-off,kind:t};}
+        });
+      });
+      if(bestHY){ny=Math.max(0,Math.min(CH-el.h,bestHY.newY));guides.push({type:"h",pos:bestHY.lineY,kind:bestHY.kind});}
+
+      onGuides?.(guides);
+      onUpdate(el.id,{x:nx,y:ny});
+    };
+    const up=()=>{onCommit?.();onGuides?.([]);window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);};
+    window.addEventListener("mousemove",mv);
+    window.addEventListener("mouseup",up);
   };
+
+  return(
+    <div onMouseDown={beginDrag}
+      style={{
+        position:"absolute",left:el.x,top:el.y,
+        width:el.w,height:el.h,
+        cursor:"move",userSelect:"none",zIndex:selected?200:1,
+      }}>
+      {/* Visual — pointerEvents:none garantiza que nada robe el click */}
+      <div style={{
+        position:"absolute",inset:0,overflow:"hidden",
+        borderRadius:ct.r,pointerEvents:"none",
+        boxShadow:selected
+          ?`0 0 0 2px ${ct.accent}, 0 0 0 5px ${rgba(ct.accent,0.2)}, 0 4px 20px rgba(0,0,0,0.15)`
+          :`0 1px 4px rgba(0,0,0,0.08)`,
+        transition:"box-shadow 0.1s",
+      }}>
+        <Visual el={el} ct={ct} navCfg={navCfg} hdrCfg={hdrCfg}/>
+      </div>
+    </div>
+  );
+}
+
+// ── HandleOverlay — handles de resize fuera del clip layer ─────────
+// Vive en una capa con overflow:visible sobre el clip layer
+function HandleOverlay({el,ct,zoom,CW,CH,snapGrid,onResize,onCommit}){
+  const op=useRef({sx:0,sy:0,ox:0,oy:0,ow:0,oh:0,hdx:0,hdy:0,hdw:0,hdh:0});
+  const HS=14;
+
   const beginResize=(e,hi)=>{
     e.stopPropagation();e.preventDefault();
     const[,dx,dy,dw,dh]=HANDLES[hi];
-    op.current={mode:"resize",sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y,ow:el.w,oh:el.h,hdx:dx,hdy:dy,hdw:dw,hdh:dh};
-    bind();
-  };
-  const bind=()=>{
+    op.current={sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y,ow:el.w,oh:el.h,hdx:dx,hdy:dy,hdw:dw,hdh:dh};
     const z=zoom;
     const mv=e=>{
       const ddx=(e.clientX-op.current.sx)/z;
       const ddy=(e.clientY-op.current.sy)/z;
-      if(op.current.mode==="drag"){
-        const nx=snapGrid?snap(op.current.ox+ddx):Math.round(op.current.ox+ddx);
-        const ny=snapGrid?snap(op.current.oy+ddy):Math.round(op.current.oy+ddy);
-        onUpdate(el.id,{x:Math.max(0,nx),y:Math.max(0,ny)});
-      }else{
-        let nw=Math.max(MIN_W,Math.round(op.current.ow+ddx*op.current.hdw));
-        let nh=Math.max(MIN_H,Math.round(op.current.oh+ddy*op.current.hdh));
-        if(snapGrid){nw=Math.max(MIN_W,snap(nw));nh=Math.max(MIN_H,snap(nh));}
-        const nx=op.current.hdx?Math.max(0,Math.round(op.current.ox+ddx*op.current.hdx)):op.current.ox;
-        const ny=op.current.hdy?Math.max(0,Math.round(op.current.oy+ddy*op.current.hdy)):op.current.oy;
-        onUpdate(el.id,{x:nx,y:ny,w:nw,h:nh});
-      }
+      let nw=Math.max(MIN_W,Math.round(op.current.ow+ddx*op.current.hdw));
+      let nh=Math.max(MIN_H,Math.round(op.current.oh+ddy*op.current.hdh));
+      if(snapGrid){nw=Math.max(MIN_W,snap(nw));nh=Math.max(MIN_H,snap(nh));}
+      const nx=op.current.hdx?Math.max(0,Math.min(CW-nw,Math.round(op.current.ox+ddx*op.current.hdx))):op.current.ox;
+      const ny=op.current.hdy?Math.max(0,Math.min(CH-nh,Math.round(op.current.oy+ddy*op.current.hdy))):op.current.oy;
+      // Clamp tamaño para que no salga del canvas
+      const fw=Math.min(nw,CW-nx);
+      const fh=Math.min(nh,CH-ny);
+      onResize(el.id,{x:nx,y:ny,w:fw,h:fh});
     };
     const up=()=>{onCommit?.();window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);};
     window.addEventListener("mousemove",mv);
     window.addEventListener("mouseup",up);
   };
-  const HS=14;
+
   return(
-    <div onMouseDown={beginDrag} style={{position:"absolute",left:el.x,top:el.y,width:el.w,height:el.h,cursor:"move",userSelect:"none",overflow:"visible",zIndex:selected?200:1}}>
-      <div style={{position:"absolute",inset:0,overflow:"hidden",borderRadius:ct.r,pointerEvents:"none",boxShadow:selected?`0 0 0 2px ${ct.accent}, 0 0 0 5px ${rgba(ct.accent,0.2)}, 0 4px 20px rgba(0,0,0,0.15)`: `0 1px 4px rgba(0,0,0,0.08)`,transition:"box-shadow 0.1s"}}>
-        <Visual el={el} ct={ct} navCfg={navCfg} hdrCfg={hdrCfg}/>
-      </div>
-      {selected&&HPOS.map(([lf,tp],i)=>(
-        <div key={i} onMouseDown={e=>beginResize(e,i)} style={{position:"absolute",left:`calc(${lf*100}% - ${HS/2}px)`,top:`calc(${tp*100}% - ${HS/2}px)`,width:HS,height:HS,background:"#ffffff",border:`2.5px solid ${ct.accent}`,borderRadius:3,cursor:HANDLES[i][0],zIndex:500,boxShadow:"0 2px 6px rgba(0,0,0,0.3)",transition:"transform 0.1s"}} onMouseEnter={e=>e.currentTarget.style.transform="scale(1.5)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}/>
+    <div style={{position:"absolute",left:el.x,top:el.y,width:el.w,height:el.h,pointerEvents:"none",zIndex:300}}>
+      {HPOS.map(([lf,tp],i)=>(
+        <div key={i}
+          onMouseDown={e=>beginResize(e,i)}
+          style={{
+            position:"absolute",
+            left:`calc(${lf*100}% - ${HS/2}px)`,
+            top:`calc(${tp*100}% - ${HS/2}px)`,
+            width:HS,height:HS,
+            background:"#ffffff",
+            border:`2.5px solid ${ct.accent}`,
+            borderRadius:3,cursor:HANDLES[i][0],
+            boxShadow:`0 2px 8px rgba(0,0,0,0.35)`,
+            pointerEvents:"all",
+            transition:"transform 0.1s",
+            zIndex:301,
+          }}
+          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.5)"}
+          onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}
+        />
       ))}
     </div>
   );
 }
 
-// ── PRESETS (simplificado) ──
+// ── GENERADORES HTML CONTENT + DAX ───────────────────────────────
+function hexToRgb(hex){
+  const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return r?`${parseInt(r[1],16)},${parseInt(r[2],16)},${parseInt(r[3],16)}`:"0,0,0";
+}
+
+function generateNavHTML(nav,ct){
+  const{colors,pages,fontSize,borderRadius,width,widthCollapsed,logoUrl,reportName,style}=nav;
+  const isCollapsible=style==="collapsible";
+  // Color de fondo: tono suave derivado del tema (igual que NavViz)
+  const themeNavBg=(()=>{
+    if(!ct)return colors.bg;
+    const base=ct.headerBg||ct.accent2||ct.accent||colors.bg;
+    const canvasC=ct.canvas||"#ffffff";
+    return isDark(canvasC)?mix(base,canvasC,0.45):mix(base,canvasC,0.78);
+  })();
+  const navBg=colors.bgCustom?colors.bg:themeNavBg;
+  const navIsDark=isDark(navBg);
+  const navAccent=(colors.selectedCustom||!ct)?colors.accent:(ct.accent||colors.accent);
+  const navTxtActive=colors.textActiveCustom?colors.textActive:(navIsDark?"#ffffff":(ct?.text||"#1e293b"));
+  const navTxtInactive=colors.textInactiveCustom?colors.textInactive:(navIsDark?"rgba(255,255,255,0.65)":"rgba(30,41,59,0.6)");
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif;}
+  body{background:${navBg};width:100%;height:100%;overflow:hidden;}
+  .nav{display:flex;flex-direction:column;height:100%;width:100%;background:${navBg};}
+  .nav-header{padding:16px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,0.08);}
+  .logo{width:28px;height:28px;border-radius:6px;object-fit:contain;flex-shrink:0;}
+  .logo-placeholder{width:28px;height:28px;border-radius:6px;background:${navAccent};display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0;}
+  .report-name{font-size:${fontSize}px;font-weight:700;color:${navTxtActive};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .nav-items{flex:1;padding:8px 0;overflow:hidden;}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;font-size:${fontSize}px;color:${navTxtInactive};border-radius:${borderRadius}px;margin:2px 8px;transition:all 0.15s;}
+  .nav-item:hover{background:rgba(${hexToRgb(colors.hover)},${colors.hoverOpacity/100});color:${navTxtActive};}
+  .nav-item:active{background:rgba(${hexToRgb(colors.press)},${colors.pressOpacity/100});}
+  .nav-item.active{background:rgba(${hexToRgb(colors.selected)},${colors.selectedOpacity/100});color:${navTxtActive};font-weight:600;}
+  .nav-item .icon{font-size:${nav.iconSize}px;width:20px;text-align:center;flex-shrink:0;}
+  .nav-item .label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  ${isCollapsible?`.collapsed .label{display:none;}.collapsed .report-name{display:none;}.toggle{margin-left:auto;cursor:pointer;font-size:12px;color:${navTxtInactive};}`:""}
+</style></head>
+<body>
+<div class="nav" id="nav">
+  <div class="nav-header">
+    ${logoUrl?`<img src="${directImageUrl(logoUrl)}" class="logo" onerror="this.style.display='none'">`:`<div class="logo-placeholder">⬡</div>`}
+    <span class="report-name">${reportName}</span>
+    ${isCollapsible?`<span class="toggle" onclick="toggleNav()">◀</span>`:""}
+  </div>
+  <div class="nav-items">
+    ${pages.map((p,i)=>`<div class="nav-item${(p.active||(!pages.some(x=>x.active)&&i===0))?" active":""}" onclick="setActive(this)">
+      <span class="icon">${p.icon}</span>
+      <span class="label">${p.label}</span>
+    </div>`).join("\n    ")}
+  </div>
+</div>
+${isCollapsible?`<script>
+  function toggleNav(){
+    const n=document.getElementById('nav');
+    n.classList.toggle('collapsed');
+    const t=n.querySelector('.toggle');
+    t.textContent=n.classList.contains('collapsed')?'▶':'◀';
+  }
+  function setActive(el){
+    document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));
+    el.classList.add('active');
+  }
+<\/script>`:`<script>
+  function setActive(el){
+    document.querySelectorAll('.nav-item').forEach(i=>i.classList.remove('active'));
+    el.classList.add('active');
+  }
+<\/script>`}
+</body></html>`;
+}
+
+// Genera el header del reporte como visual HTML Content (barra superior)
+function generateHeaderHTML(hdr,ct,nav){
+  const bg=hdr.bgColor||ct.headerBg||ct.accent||"#2563eb";
+  const title=hdr.title||"Mi Reporte";
+  const subtitle=hdr.subtitle||"";
+  const logoUrl=nav?.logoUrl||"";
+  const titleColor="#ffffff";
+  const subColor="rgba(255,255,255,0.78)";
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',sans-serif;}
+  body{width:100%;height:100%;overflow:hidden;}
+  .header{display:flex;align-items:center;gap:14px;height:100%;width:100%;
+    background:${bg};padding:0 20px;}
+  .logo{height:60%;max-height:40px;object-fit:contain;flex-shrink:0;}
+  .logo-ph{width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,0.2);
+    display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+  .titles{display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
+  .title{font-size:18px;font-weight:700;color:${titleColor};
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.2;}
+  .subtitle{font-size:11px;color:${subColor};
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;}
+</style></head>
+<body>
+<div class="header">
+  ${logoUrl?`<img src="${directImageUrl(logoUrl)}" class="logo" onerror="this.outerHTML='<div class=&quot;logo-ph&quot;>⬡</div>'">`:`<div class="logo-ph">⬡</div>`}
+  <div class="titles">
+    <div class="title">${title}</div>
+    ${subtitle?`<div class="subtitle">${subtitle}</div>`:""}
+  </div>
+</div>
+</body></html>`;
+}
+
+function generateNavDAX(nav){
+  const{pages,colors,borderRadius,fontSize}=nav;
+  // Una medida por página — cada una con su página marcada como activa.
+  // Ventaja: no requiere SELECTEDVALUE ni tabla desconectada.
+  // Solo pegas la medida correspondiente en el visual HTML Content de cada página.
+  const buildMeasure=(activePage)=>{
+    const safeName=activePage.label.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]/g,"").replace(/\s+/g,"_");
+    const items=pages.map(p=>{
+      const isActive=p.id===activePage.id;
+      return isActive
+        ?`"<div class='nav-item active'>${p.icon} ${p.label}</div>"`
+        :`"<div class='nav-item'>${p.icon} ${p.label}</div>"`;
+    }).join(" &\n    ");
+    return`// ── Página: ${activePage.label} ──────────────────────────
+// Pega esta medida en el visual HTML Content de la página "${activePage.label}"
+NavMenu_${safeName} =
+"<style>" &
+"  .nav-item { display:flex; align-items:center; gap:10px; padding:10px 14px;" &
+"    cursor:pointer; font-size:${fontSize}px; border-radius:${borderRadius}px; margin:2px 8px;" &
+"    color:${colors.textInactive}; font-family:Segoe UI,sans-serif; transition:background 0.15s; }" &
+"  .nav-item:hover { background:rgba(${hexToRgb(colors.hover)},${colors.hoverOpacity/100}); color:${colors.textActive}; }" &
+"  .nav-item:active { background:rgba(${hexToRgb(colors.press)},${colors.pressOpacity/100}); }" &
+"  .nav-item.active { background:rgba(${hexToRgb(colors.selected)},${colors.selectedOpacity/100});" &
+"    color:${colors.textActive}; font-weight:600; }" &
+"</style>" &
+"<div style='background:${colors.bg};height:100%;padding:8px 0;'>" &
+    ${items} &
+"</div>"`;
+  };
+
+  return`// ═══════════════════════════════════════════════════════
+// MEDIDAS DAX — Menú de Navegación PBI Designer v2.0
+// UNA MEDIDA POR PÁGINA — cada página tiene su menú con
+// su propio ítem marcado como activo.
+//
+// INSTRUCCIONES:
+// 1. Agrega el visual "HTML Content" a cada página del reporte
+// 2. Pega en cada página SU medida correspondiente
+// 3. Configura los botones de navegación con marcadores (bookmarks)
+// ═══════════════════════════════════════════════════════
+
+${pages.map(p=>buildMeasure(p)).join("\n\n")}
+`;
+}
+
+// ── BIBLIOTECA DE TEMAS DE MARCA (paletas reutilizables) ──────────
+// Solo colores del canvas (ct), no layouts. Se aplican sobre el diseño actual.
+const BRAND_THEMES=[
+  {id:"agrolatina",name:"Agrolatina",emoji:"🥑",
+    ct:{canvas:"#ffffff",wallpaper:"#eef3ec",cardBg:"#ffffff",cardBorder:"#dce7d6",accent:"#4d7c2f",accent2:"#3d6325",secondary:"#eef5e9",text:"#1f2e16",textSub:"#5a6b4a",textMuted:"#92a382",headerBg:"#3d6325",success:"#16a34a",danger:"#dc2626",warning:"#ea9a16",r:8}},
+  {id:"corporate-blue",name:"Corporate Blue",emoji:"🔵",
+    ct:{canvas:"#ffffff",wallpaper:"#eef2f7",cardBg:"#ffffff",cardBorder:"#dbe4ee",accent:"#2563eb",accent2:"#1d4ed8",secondary:"#eff6ff",text:"#1e293b",textSub:"#64748b",textMuted:"#94a3b8",headerBg:"#1e3a8a",success:"#059669",danger:"#dc2626",warning:"#f59e0b",r:8}},
+  {id:"midnight",name:"Midnight Dark",emoji:"🌙",
+    ct:{canvas:"#0d1b2a",wallpaper:"#060e18",cardBg:"#0f2236",cardBorder:"#1d3349",accent:"#38bdf8",accent2:"#0ea5e9",secondary:"#0c2a3f",text:"#e2f4ff",textSub:"#7dd3fc",textMuted:"#5a7a92",headerBg:"#0a1828",success:"#22c55e",danger:"#f87171",warning:"#fbbf24",r:10}},
+  {id:"emerald",name:"Emerald Fresh",emoji:"💚",
+    ct:{canvas:"#ffffff",wallpaper:"#e8f5ee",cardBg:"#ffffff",cardBorder:"#c8e9d6",accent:"#059669",accent2:"#047857",secondary:"#ecfdf5",text:"#14322a",textSub:"#4b6b5e",textMuted:"#84a394",headerBg:"#065f46",success:"#16a34a",danger:"#dc2626",warning:"#f59e0b",r:8}},
+  {id:"sunset",name:"Sunset Warm",emoji:"🌅",
+    ct:{canvas:"#fffbf7",wallpaper:"#f7ede2",cardBg:"#ffffff",cardBorder:"#f3ddc8",accent:"#ea580c",accent2:"#c2410c",secondary:"#fff7ed",text:"#3a1f12",textSub:"#7a5a47",textMuted:"#b09080",headerBg:"#9a3412",success:"#16a34a",danger:"#dc2626",warning:"#f59e0b",r:10}},
+  {id:"royal",name:"Royal Purple",emoji:"👑",
+    ct:{canvas:"#0e0b1e",wallpaper:"#070512",cardBg:"#1a1430",cardBorder:"#2d1f50",accent:"#a78bfa",accent2:"#8b5cf6",secondary:"#1e1640",text:"#ede9fe",textSub:"#c4b5fd",textMuted:"#6d5e9e",headerBg:"#4c1d95",success:"#22c55e",danger:"#f87171",warning:"#fbbf24",r:10}},
+  {id:"slate-pro",name:"Slate Pro",emoji:"⬜",
+    ct:{canvas:"#ffffff",wallpaper:"#eef1f4",cardBg:"#ffffff",cardBorder:"#e2e8f0",accent:"#475569",accent2:"#334155",secondary:"#f1f5f9",text:"#0f172a",textSub:"#475569",textMuted:"#94a3b8",headerBg:"#1e293b",success:"#059669",danger:"#dc2626",warning:"#f59e0b",r:6}},
+  {id:"crimson",name:"Crimson Bold",emoji:"🔴",
+    ct:{canvas:"#ffffff",wallpaper:"#f7eaea",cardBg:"#ffffff",cardBorder:"#f0d0d0",accent:"#dc2626",accent2:"#b91c1c",secondary:"#fef2f2",text:"#2e1414",textSub:"#7a4a4a",textMuted:"#b08888",headerBg:"#991b1b",success:"#16a34a",danger:"#dc2626",warning:"#f59e0b",r:8}},
+];
+
+// ── PRESETS (incluyen canvasTheme propio) ─────────────────────────
 const PRESETS={
-  sales:{ct:{...CANVAS_DEFAULT,accent:"#0ea5e9",accent2:"#0284c7",secondary:"#e0f2fe",headerBg:"#0c4a6e",cardBorder:"#bae6fd"},nav:{position:"left",style:"collapsible",width:190,exportSeparate:false},header:{show:true,title:"Sales Dashboard",subtitle:"Revenue · Units · Pipeline",height:58,bgColor:"#0c4a6e"},els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Sales Dashboard"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navigation"},{id:3,type:"kpi",x:198,y:66,w:180,h:88,label:"Total Revenue"},{id:4,type:"kpi",x:386,y:66,w:180,h:88,label:"Units Sold"},{id:5,type:"kpi",x:574,y:66,w:180,h:88,label:"Avg. Deal"},{id:6,type:"kpi",x:762,y:66,w:190,h:88,label:"Win Rate %"},{id:7,type:"bar",x:198,y:162,w:370,h:205,label:"Revenue by Region"},{id:8,type:"line",x:576,y:162,w:376,h:205,label:"Monthly Trend"},{id:9,type:"slicer",x:198,y:375,w:170,h:197,label:"Period Filter"},{id:10,type:"pie",x:376,y:375,w:200,h:197,label:"By Segment"},{id:11,type:"table",x:584,y:375,w:368,h:197,label:"Top Deals"}]},
-  finance:{ct:{...CANVAS_DEFAULT,canvas:"#0e0b1e",cardBg:"#1a1430",cardBorder:"#2d1f50",accent:"#a78bfa",accent2:"#8b5cf6",secondary:"#1e1640",text:"#ede9fe",textSub:"#a78bfa",textMuted:"#6d5e9e",headerBg:"#2d1b69",r:10},nav:{position:"left",style:"static",width:190,exportSeparate:false},header:{show:true,title:"Financial Overview",subtitle:"P&L · Cash Flow · Budget",height:58,bgColor:"#2d1b69"},els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Financial Overview"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navigation"},{id:3,type:"kpi",x:198,y:66,w:180,h:88,label:"Net Revenue"},{id:4,type:"kpi",x:386,y:66,w:180,h:88,label:"EBITDA"},{id:5,type:"kpi",x:574,y:66,w:180,h:88,label:"Net Margin"},{id:6,type:"kpi",x:762,y:66,w:190,h:88,label:"Cash Flow"},{id:7,type:"line",x:198,y:162,w:528,h:205,label:"P&L Monthly"},{id:8,type:"bar",x:734,y:162,w:218,h:205,label:"Expenses"},{id:9,type:"table",x:198,y:375,w:388,h:197,label:"Budget vs Actual"},{id:10,type:"pie",x:594,y:375,w:200,h:197,label:"Cost Centers"},{id:11,type:"slicer",x:802,y:375,w:150,h:197,label:"Quarter"}]},
+  sales:{
+    ct:{...CANVAS_DEFAULT,accent:"#0ea5e9",accent2:"#0284c7",secondary:"#e0f2fe",headerBg:"#0c4a6e",cardBorder:"#bae6fd"},
+    nav:{position:"left",style:"collapsible",width:190,exportSeparate:false},
+    header:{show:true,title:"Sales Dashboard",subtitle:"Revenue · Units · Pipeline",height:58,bgColor:"#0c4a6e"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Sales Dashboard"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navigation"},{id:3,type:"slicer",x:198,y:66,w:754,h:44,label:"Filtros: Periodo · Región"},{id:4,type:"kpi",x:198,y:114,w:180,h:88,label:"Total Revenue"},{id:5,type:"kpi",x:386,y:114,w:180,h:88,label:"Units Sold"},{id:6,type:"kpi",x:574,y:114,w:180,h:88,label:"Avg. Deal"},{id:7,type:"kpi",x:762,y:114,w:190,h:88,label:"Win Rate %"},{id:8,type:"bar",x:198,y:210,w:370,h:200,label:"Revenue by Region"},{id:9,type:"line",x:576,y:210,w:376,h:200,label:"Monthly Trend"},{id:10,type:"pie",x:198,y:418,w:240,h:154,label:"By Segment"},{id:11,type:"table",x:446,y:418,w:506,h:154,label:"Top Deals"}]},
+  finance:{
+    ct:{...CANVAS_DEFAULT,canvas:"#0e0b1e",cardBg:"#1a1430",cardBorder:"#2d1f50",accent:"#a78bfa",accent2:"#8b5cf6",secondary:"#1e1640",text:"#ede9fe",textSub:"#a78bfa",textMuted:"#6d5e9e",headerBg:"#2d1b69",r:10},
+    nav:{position:"left",style:"static",width:190,exportSeparate:false},
+    header:{show:true,title:"Financial Overview",subtitle:"P&L · Cash Flow · Budget",height:58,bgColor:"#2d1b69"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Financial Overview"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navigation"},{id:3,type:"slicer",x:198,y:66,w:754,h:44,label:"Filtros: Trimestre · Centro de Costo"},{id:4,type:"kpi",x:198,y:114,w:180,h:88,label:"Net Revenue"},{id:5,type:"kpi",x:386,y:114,w:180,h:88,label:"EBITDA"},{id:6,type:"kpi",x:574,y:114,w:180,h:88,label:"Net Margin"},{id:7,type:"kpi",x:762,y:114,w:190,h:88,label:"Cash Flow"},{id:8,type:"line",x:198,y:210,w:528,h:200,label:"P&L Monthly"},{id:9,type:"bar",x:734,y:210,w:218,h:200,label:"Expenses"},{id:10,type:"table",x:198,y:418,w:556,h:154,label:"Budget vs Actual"},{id:11,type:"pie",x:762,y:418,w:190,h:154,label:"Cost Centers"}]},
+  hr:{
+    ct:{...CANVAS_DEFAULT,accent:"#f472b6",accent2:"#ec4899",secondary:"#fdf2f8",headerBg:"#831843",cardBorder:"#fbcfe8"},
+    nav:{position:"right",style:"static",width:185,exportSeparate:false},
+    header:{show:true,title:"HR Analytics",subtitle:"People · Performance · Culture",height:58,bgColor:"#831843"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"HR Analytics"},{id:2,type:"nav",x:775,y:58,w:185,h:522,label:"Navigation"},{id:3,type:"slicer",x:8,y:66,w:759,h:44,label:"Filtros: Departamento · Periodo"},{id:4,type:"kpi",x:8,y:114,w:180,h:88,label:"Headcount"},{id:5,type:"kpi",x:196,y:114,w:180,h:88,label:"Attrition %"},{id:6,type:"kpi",x:384,y:114,w:180,h:88,label:"Avg. Tenure"},{id:7,type:"kpi",x:572,y:114,w:195,h:88,label:"Engagement"},{id:8,type:"bar",x:8,y:210,w:370,h:200,label:"Headcount by Dept"},{id:9,type:"line",x:386,y:210,w:381,h:200,label:"Hiring Trend"},{id:10,type:"pie",x:8,y:418,w:240,h:154,label:"By Gender"},{id:11,type:"table",x:256,y:418,w:511,h:154,label:"Top Performers"}]},
+  marketing:{
+    ct:{...CANVAS_DEFAULT,accent:"#fb923c",accent2:"#f97316",secondary:"#fff7ed",headerBg:"#9a3412",cardBorder:"#fed7aa"},
+    nav:{position:"top",style:"static",width:960,exportSeparate:false},
+    header:{show:true,title:"Marketing Dashboard",subtitle:"Campaigns · Conversions · ROI",height:54,bgColor:"#9a3412"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:54,label:"Marketing Dashboard"},{id:2,type:"nav",x:0,y:54,w:960,h:42,label:"Navigation"},{id:3,type:"slicer",x:8,y:104,w:944,h:44,label:"Filtros: Campaña · Canal · Periodo"},{id:4,type:"kpi",x:8,y:150,w:177,h:84,label:"Impressions"},{id:5,type:"kpi",x:193,y:150,w:177,h:84,label:"CTR %"},{id:6,type:"kpi",x:378,y:150,w:177,h:84,label:"Conversions"},{id:7,type:"kpi",x:563,y:150,w:177,h:84,label:"CAC"},{id:8,type:"kpi",x:748,y:150,w:204,h:84,label:"ROAS"},{id:9,type:"line",x:8,y:242,w:560,h:170,label:"Campaign Performance"},{id:10,type:"bar",x:576,y:242,w:376,h:170,label:"Channel Mix"},{id:11,type:"table",x:8,y:420,w:560,h:152,label:"Top Campaigns"},{id:12,type:"pie",x:576,y:420,w:376,h:152,label:"Audience Split"}]},
+  // ── PLANTILLAS POR INDUSTRIA ──
+  agro:{
+    ct:{...CANVAS_DEFAULT,canvas:"#ffffff",wallpaper:"#eef3ec",accent:"#4d7c2f",accent2:"#3d6325",secondary:"#eef5e9",headerBg:"#3d6325",cardBorder:"#dce7d6",text:"#1f2e16",textSub:"#5a6b4a",warning:"#ea9a16"},
+    nav:{position:"left",style:"collapsible",width:190,exportSeparate:false},
+    header:{show:true,title:"Control de Proceso Agrícola",subtitle:"Campaña · Calibres · Rendimiento",height:58,bgColor:"#3d6325"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Control de Proceso Agrícola"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navegación"},{id:3,type:"slicer",x:198,y:66,w:754,h:44,label:"Filtros: Fundo · Variedad · Campaña"},{id:4,type:"kpi",x:198,y:114,w:180,h:88,label:"Kg Cosechados"},{id:5,type:"kpi",x:386,y:114,w:180,h:88,label:"Kg Exportados"},{id:6,type:"kpi",x:574,y:114,w:180,h:88,label:"% Rendimiento"},{id:7,type:"kpi",x:762,y:114,w:190,h:88,label:"Merma Total"},{id:8,type:"bar",x:198,y:210,w:370,h:200,label:"Producción por Calibre"},{id:9,type:"line",x:576,y:210,w:376,h:200,label:"Tendencia de Cosecha"},{id:10,type:"pie",x:198,y:418,w:240,h:154,label:"Destino Export"},{id:11,type:"table",x:446,y:418,w:506,h:154,label:"Detalle por Lote"}]},
+  retail:{
+    ct:{...CANVAS_DEFAULT,accent:"#7c3aed",accent2:"#6d28d9",secondary:"#f3effe",headerBg:"#5b21b6",cardBorder:"#ddd0f7"},
+    nav:{position:"left",style:"static",width:190,exportSeparate:false},
+    header:{show:true,title:"Retail Performance",subtitle:"Ventas · Inventario · Tiendas",height:58,bgColor:"#5b21b6"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Retail Performance"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navegación"},{id:3,type:"slicer",x:198,y:66,w:754,h:44,label:"Filtros: Categoría · Tienda · Periodo"},{id:4,type:"kpi",x:198,y:114,w:180,h:88,label:"Ventas Totales"},{id:5,type:"kpi",x:386,y:114,w:180,h:88,label:"Ticket Promedio"},{id:6,type:"kpi",x:574,y:114,w:180,h:88,label:"Unidades"},{id:7,type:"kpi",x:762,y:114,w:190,h:88,label:"Margen %"},{id:8,type:"bar",x:198,y:210,w:370,h:200,label:"Ventas por Tienda"},{id:9,type:"line",x:576,y:210,w:376,h:200,label:"Tendencia Diaria"},{id:10,type:"pie",x:198,y:418,w:240,h:154,label:"Mix de Productos"},{id:11,type:"table",x:446,y:418,w:506,h:154,label:"Top SKUs"}]},
+  salud:{
+    ct:{...CANVAS_DEFAULT,accent:"#0891b2",accent2:"#0e7490",secondary:"#ecfeff",headerBg:"#155e75",cardBorder:"#bae6fd"},
+    nav:{position:"left",style:"static",width:190,exportSeparate:false},
+    header:{show:true,title:"Indicadores de Salud",subtitle:"Pacientes · Ocupación · Tiempos",height:58,bgColor:"#155e75"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Indicadores de Salud"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navegación"},{id:3,type:"slicer",x:198,y:66,w:754,h:44,label:"Filtros: Área · Especialidad · Periodo"},{id:4,type:"kpi",x:198,y:114,w:180,h:88,label:"Pacientes Atendidos"},{id:5,type:"kpi",x:386,y:114,w:180,h:88,label:"% Ocupación"},{id:6,type:"kpi",x:574,y:114,w:180,h:88,label:"Tiempo Espera"},{id:7,type:"kpi",x:762,y:114,w:190,h:88,label:"Satisfacción"},{id:8,type:"line",x:198,y:210,w:528,h:200,label:"Atenciones por Día"},{id:9,type:"bar",x:734,y:210,w:218,h:200,label:"Por Especialidad"},{id:10,type:"table",x:198,y:418,w:556,h:154,label:"Detalle por Área"},{id:11,type:"pie",x:762,y:418,w:190,h:154,label:"Tipo de Atención"}]},
+  logistica:{
+    ct:{...CANVAS_DEFAULT,canvas:"#0d1b2a",wallpaper:"#060e18",cardBg:"#0f2236",cardBorder:"#1d3349",accent:"#f59e0b",accent2:"#d97706",secondary:"#1e2a3f",text:"#e2f4ff",textSub:"#94a3b8",textMuted:"#5a7a92",headerBg:"#1e293b",r:8},
+    nav:{position:"left",style:"collapsible",width:190,exportSeparate:false},
+    header:{show:true,title:"Centro de Control Logístico",subtitle:"Flota · Rutas · Entregas",height:58,bgColor:"#1e293b"},
+    els:[{id:1,type:"header",x:0,y:0,w:960,h:58,label:"Centro de Control Logístico"},{id:2,type:"nav",x:0,y:58,w:190,h:522,label:"Navegación"},{id:3,type:"slicer",x:198,y:66,w:754,h:44,label:"Filtros: Zona · Vehículo · Fecha"},{id:4,type:"kpi",x:198,y:114,w:180,h:88,label:"Entregas Hoy"},{id:5,type:"kpi",x:386,y:114,w:180,h:88,label:"% A Tiempo"},{id:6,type:"kpi",x:574,y:114,w:180,h:88,label:"Km Recorridos"},{id:7,type:"kpi",x:762,y:114,w:190,h:88,label:"Costo/Entrega"},{id:8,type:"bar",x:198,y:210,w:370,h:200,label:"Entregas por Ruta"},{id:9,type:"line",x:576,y:210,w:376,h:200,label:"Cumplimiento Diario"},{id:10,type:"pie",x:198,y:418,w:240,h:154,label:"Estado Entregas"},{id:11,type:"table",x:446,y:418,w:506,h:154,label:"Detalle de Rutas"}]},
 };
 
-// ═══════════════════════════════════════════════════════════════════
-// MAIN APP
-// ═══════════════════════════════════════════════════════════════════
+// ── Apilado vertical inteligente para vista móvil ─────────────────
+// Orden: header → nav → filtros → KPIs (2 por fila) → charts → tabla
+// Agrupa elementos pequeños en la misma fila cuando caben; garantiza cero solapes.
+function forceStackVertical(els,CW,CH){
+  const PAD=20, GAP=14;
+  const W=CW-PAD*2; // ancho de contenido
+  const order={header:0,nav:1,slicer:2,kpi:3,card:3,button:3,bar:4,line:4,pie:4,donut:4,table:5,image:5};
+  const sorted=[...els].sort((a,b)=>{
+    const oa=order[a.type]??9, ob=order[b.type]??9;
+    if(oa!==ob)return oa-ob;
+    return (a.y||0)-(b.y||0);
+  });
+  const hFor=t=>({header:70,nav:54,slicer:78,kpi:120,card:120,button:64,bar:240,line:240,pie:240,donut:240,table:240,image:200}[t]||120);
+  // Tipos que pueden ir 2 por fila en móvil (elementos compactos)
+  const pairable=new Set(["kpi","card","pie","donut"]);
+  let cursorY=0;
+  const out=[];
+  let i=0;
+  while(i<sorted.length){
+    const e=sorted[i];
+    const isFullBleed=e.type==="header"||e.type==="nav";
+    if(isFullBleed){
+      out.push({...e,x:0,y:cursorY,w:CW,h:hFor(e.type)});
+      cursorY+=hFor(e.type)+GAP;
+      i++;continue;
+    }
+    // ¿El siguiente es del mismo tipo pareable? → ponerlos lado a lado (2 por fila)
+    const next=sorted[i+1];
+    if(pairable.has(e.type)&&next&&next.type===e.type){
+      const half=Math.floor((W-GAP)/2);
+      const h=hFor(e.type);
+      out.push({...e,x:PAD,y:cursorY,w:half,h});
+      out.push({...next,x:PAD+half+GAP,y:cursorY,w:W-half-GAP,h});
+      cursorY+=h+GAP;
+      i+=2;continue;
+    }
+    // Elemento ancho completo
+    const h=hFor(e.type);
+    out.push({...e,x:PAD,y:cursorY,w:W,h});
+    cursorY+=h+GAP;
+    i++;
+  }
+  // Exponer la altura total necesaria (último elemento + margen inferior)
+  out.neededHeight=cursorY+PAD;
+  return out;
+}
+// Calcula la altura de canvas móvil ideal: 1600 estándar, o más si el contenido lo requiere
+function mobileCanvasHeight(stackedEls){
+  const needed=stackedEls.neededHeight||1600;
+  if(needed<=1600)return 1600;
+  // Redondear hacia arriba a múltiplos de 100 para un canvas limpio
+  return Math.ceil(needed/100)*100;
+}
+
+
 export default function PBIDesigner(){
+  // UI shell theme — solo afecta la interfaz
   const[appThemeId,setAppThemeId]=useState("light");
   const A=APP_THEMES[appThemeId];
+
+  // Canvas theme — arranca Clean Light, solo la IA lo cambia
   const[ct,setCt]=useState({...CANVAS_DEFAULT});
+
   const[els,setEls]=useState([]);
+  // ── Sistema de doble diseño: Normal (desktop) y Móvil ──
+  const[viewMode,setViewMode]=useState("desktop"); // "desktop" | "mobile"
+  const[mobileEls,setMobileEls]=useState(null); // diseño móvil guardado (null = no generado aún)
+  const desktopBackup=useRef(null); // respaldo del desktop mientras editas móvil
+  const desktopSizeBackup=useRef(null);
   const[sel,setSel]=useState(null);
-  const[zoom,setZoom]=useState(0.82);
+  const[canvasSize,setCanvasSize]=useState(CANVAS_SIZES[0]); // 960×580 por defecto
+  const[customW,setCustomW]=useState(1280);
+  const[customH,setCustomH]=useState(720);
+  const[draftW,setDraftW]=useState(1280); // valores en edición (antes de aplicar)
+  const[draftH,setDraftH]=useState(720);
+  const CW=canvasSize.id==="custom"?customW:canvasSize.w;
+  const[mobileH,setMobileH]=useState(1600); // altura dinámica del canvas móvil
+  // En vista móvil, la altura puede crecer si el contenido lo necesita
+  const CH=viewMode==="mobile"?mobileH:(canvasSize.id==="custom"?customH:canvasSize.h);
+  const[resizePrompt,setResizePrompt]=useState(null); // {oldW,oldH} cuando cambia el tamaño
+  const[confirmNew,setConfirmNew]=useState(false); // modal de confirmación nuevo lienzo
+  const prevSize=useRef({w:CW,h:CH});
+  const suppressResize=useRef(false); // suprime banner cuando el cambio es programático
+  const[zoom,setZoom]=useState(0.72);
   const[snapGrid,setSnapGrid]=useState(true);
+  const[guides,setGuides]=useState([]); // líneas guía de alineación durante drag
   const[showGrid,setShowGrid]=useState(true);
   const[history,setHistory]=useState([[]]);
   const[histIdx,setHistIdx]=useState(0);
@@ -637,26 +1273,183 @@ export default function PBIDesigner(){
   const[aiOpen,setAiOpen]=useState(true);
   const[nextId,setNextId]=useState(50);
   const[exportModal,setExportModal]=useState(false);
+  const[themeModal,setThemeModal]=useState(false);
+  const[versionsModal,setVersionsModal]=useState(false);
+  const[savedDesigns,setSavedDesigns]=useState([]);
+  const[savedThemes,setSavedThemes]=useState([]); // temas guardados por el usuario
+
+  // Cargar temas guardados desde storage al iniciar
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await window.storage?.get("savedThemes");
+        if(r?.value)setSavedThemes(JSON.parse(r.value));
+      }catch(e){}
+    })();
+  },[]);
+
+  const saveCurrentTheme=async(name)=>{
+    const theme={id:"u"+Date.now(),name:name||"Mi tema "+(savedThemes.length+1),emoji:"🎨",ct:{...ct},custom:true};
+    const updated=[...savedThemes,theme];
+    setSavedThemes(updated);
+    try{await window.storage?.set("savedThemes",JSON.stringify(updated),false);}catch(e){}
+  };
+  const deleteTheme=async(id)=>{
+    const updated=savedThemes.filter(t=>t.id!==id);
+    setSavedThemes(updated);
+    try{await window.storage?.set("savedThemes",JSON.stringify(updated),false);}catch(e){}
+  };
+
+  // ── VERSIONADO DE DISEÑOS (proyectos guardados) ──
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const r=await window.storage?.get("savedDesigns");
+        if(r?.value)setSavedDesigns(JSON.parse(r.value));
+      }catch(e){}
+    })();
+  },[]);
+  const saveDesign=async(name)=>{
+    const design={
+      id:"d"+Date.now(),
+      name:name||"Diseño "+(savedDesigns.length+1),
+      date:new Date().toLocaleDateString(),
+      els:els.map(e=>({...e})),
+      mobileEls:mobileEls?mobileEls.map(e=>({...e})):null,
+      ct:{...ct},navCfg:JSON.parse(JSON.stringify(navCfg)),hdrCfg:{...hdrCfg},
+      canvasSizeId:canvasSize.id,
+      customW,customH, // guardar dimensiones custom
+      count:els.length,
+    };
+    const updated=[design,...savedDesigns].slice(0,30); // máx 30
+    setSavedDesigns(updated);
+    try{await window.storage?.set("savedDesigns",JSON.stringify(updated),false);}catch(e){}
+  };
+  const loadDesign=(d)=>{
+    suppressResize.current=true;
+    const s=CANVAS_SIZES.find(x=>x.id===d.canvasSizeId);if(s)setCanvasSize(s);
+    if(d.canvasSizeId==="custom"&&d.customW&&d.customH){
+      setCustomW(d.customW);setCustomH(d.customH);setDraftW(d.customW);setDraftH(d.customH);
+    }
+    setCt({...CANVAS_DEFAULT,...d.ct});
+    setNavCfg(d.navCfg);setHdrCfg(d.hdrCfg);
+    setEls(d.els.map(e=>({...e})));pushHistory(d.els);
+    setMobileEls(d.mobileEls||null);
+    setViewMode("desktop");setSel(null);setVersionsModal(false);
+    setMsgs(m=>[...m,{role:"ai",text:`📂 Diseño "${d.name}" cargado (${d.count} elementos).`}]);
+  };
+  const deleteDesign=async(id)=>{
+    const updated=savedDesigns.filter(d=>d.id!==id);
+    setSavedDesigns(updated);
+    try{await window.storage?.set("savedDesigns",JSON.stringify(updated),false);}catch(e){}
+  };
+
   const[tab,setTab]=useState("elements");
-  const[navCfg,setNavCfg]=useState({position:"left",style:"collapsible",width:190,exportSeparate:false});
+  const[panelW,setPanelW]=useState(170); // ancho del panel izquierdo, redimensionable
+  const[leftOpen,setLeftOpen]=useState(true); // mostrar/ocultar panel izquierdo
+  const[aiW,setAiW]=useState(292); // ancho del panel derecho IA, redimensionable
+  const[navCfg,setNavCfg]=useState({...NAV_DEFAULT});
   const[hdrCfg,setHdrCfg]=useState({show:false,title:"My Report",subtitle:"Business Intelligence Dashboard",height:58,bgColor:""});
+  const[navBuilderTab,setNavBuilderTab]=useState("config"); // config|preview|code
   const[atts,setAtts]=useState([]);
+  const[auditResult,setAuditResult]=useState(null); // resultado del último audit
   const[dragStatus,setDragStatus]=useState(null);
+
   const canvasRef=useRef(null);
   const chatEndRef=useRef(null);
   const fileRef=useRef(null);
   const selEl=els.find(e=>e.id===sel);
-  const [exportActiveTab, setExportActiveTab] = useState("theme");
 
   useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
 
+  // ── DETECTOR DE CAMBIO DE TAMAÑO DE CANVAS ──
+  useEffect(()=>{
+    const{w:ow,h:oh}=prevSize.current;
+    if((ow!==CW||oh!==CH)&&els.length>0){
+      // Si el cambio fue programático (botón móvil), no mostrar el banner
+      if(suppressResize.current){
+        suppressResize.current=false;
+      }else{
+        const overflows=els.some(e=>e.x+e.w>CW||e.y+e.h>CH);
+        if(overflows||ow!==CW||oh!==CH){
+          setResizePrompt({oldW:ow,oldH:oh,hasOverflow:overflows});
+        }
+      }
+    }
+    prevSize.current={w:CW,h:CH};
+  },[CW,CH]);
+
+  // Escala los elementos de un tamaño a otro, anclando el contenido al header (sin huecos)
+  const scaleElementsTo=(oldW,oldH,newW,newH)=>{
+    setEls(a=>{
+      const header=a.find(e=>e.type==="header");
+      const headerH=header?header.h:0;
+      const oldHeaderBottom=header?(header.y+header.h):0;
+      const navLeft=a.find(e=>e.type==="nav"&&e.h>e.w);
+      const navRight=navLeft&&navLeft.x>oldW/2;
+      const navW=navLeft?navLeft.w:0;
+      const rx=newW/oldW, ry=newH/oldH;
+      const n=a.map(e=>{
+        if(e.type==="header")return{...e,x:0,y:0,w:newW,h:e.h};
+        if(e.type==="nav"&&e.h>e.w){const navX=navRight?newW-e.w:0;return{...e,x:navX,y:headerH,w:e.w,h:newH-headerH};}
+        if(e.type==="nav")return{...e,x:0,y:headerH,w:newW,h:e.h};
+        const oldContentTop=oldHeaderBottom,newContentTop=headerH;
+        const oldContentH=oldH-oldContentTop,newContentH=newH-newContentTop;
+        const cry=oldContentH>0?newContentH/oldContentH:ry;
+        const newY=Math.round(newContentTop+(e.y-oldContentTop)*cry);
+        const oldLeft=navLeft&&!navRight?navW:0,newLeft=navLeft&&!navRight?navW:0;
+        const oldContentW=oldW-oldLeft-(navRight?navW:0),newContentW=newW-newLeft-(navRight?navW:0);
+        const crx=oldContentW>0?newContentW/oldContentW:rx;
+        const newX=Math.round(newLeft+(e.x-oldLeft)*crx);
+        return{...e,x:newX,y:newY,w:Math.max(MIN_W,Math.round(e.w*crx)),h:Math.max(MIN_H,Math.round(e.h*cry))};
+      });
+      pushHistory(n);return n;
+    });
+  };
+
+  // Escala todos los elementos proporcionalmente al nuevo tamaño (usado por el banner)
+  const scaleAllElements=()=>{
+    if(!resizePrompt)return;
+    scaleElementsTo(resizePrompt.oldW,resizePrompt.oldH,CW,CH);
+    setResizePrompt(null);
+  };
+  // Solo ajusta (clamp) los elementos que se desbordan
+  const clampOverflowElements=()=>{
+    setEls(a=>{
+      const n=a.map(e=>{
+        let w=Math.min(e.w,CW), h=Math.min(e.h,CH);
+        let x=Math.max(0,Math.min(e.x,CW-w));
+        let y=Math.max(0,Math.min(e.y,CH-h));
+        return{...e,x,y,w,h};
+      });
+      pushHistory(n);return n;
+    });
+    setResizePrompt(null);
+  };
+
+  // Aplica el tamaño personalizado (una sola vez, con validación de límites)
+  const applyCustomSize=()=>{
+    const w=Math.max(200,Math.min(4000,draftW||1280));
+    const h=Math.max(200,Math.min(4000,draftH||720));
+    const curW=CW, curH=CH;
+    setDraftW(w);setDraftH(h);
+    // Escalar automáticamente los elementos al nuevo tamaño (sin banner)
+    if(els.length>0&&(w!==curW||h!==curH)){
+      suppressResize.current=true;
+      scaleElementsTo(curW,curH,w,h);
+    }
+    setCustomW(w);setCustomH(h);
+  };
+
+  // ── HISTORY ──
   const pushHistory=useCallback(newEls=>{
     setHistory(h=>{const n=h.slice(0,histIdx+1);n.push([...newEls]);return n;});
     setHistIdx(i=>i+1);
   },[histIdx]);
-  const undo=useCallback(()=>{if(histIdx>0){const i=histIdx-1;setHistIdx(i);setEls([...history[i]]);}}, [histIdx,history]);
-  const redo=useCallback(()=>{if(histIdx<history.length-1){const i=histIdx+1;setHistIdx(i);setEls([...history[i]]);}}, [histIdx,history]);
+  const undo=useCallback(()=>{if(histIdx>0){const i=histIdx-1;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
+  const redo=useCallback(()=>{if(histIdx<history.length-1){const i=histIdx+1;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
 
+  // ── KEYBOARD ──
   useEffect(()=>{
     const kd=e=>{
       if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA")return;
@@ -668,13 +1461,20 @@ export default function PBIDesigner(){
         e.preventDefault();
         const step=e.shiftKey?8:1;
         const d={ArrowLeft:{x:-step},ArrowRight:{x:step},ArrowUp:{y:-step},ArrowDown:{y:step}};
-        setEls(a=>a.map(el=>el.id===sel?{...el,...Object.fromEntries(Object.entries(d[e.key]).map(([k,v])=>[k,Math.max(0,(el[k]||0)+v)]))}:el));
+        setEls(a=>a.map(el=>{
+          if(el.id!==sel)return el;
+          const patch=d[e.key];
+          const nx=patch.x!==undefined?Math.max(0,Math.min(CW-el.w,el.x+patch.x)):el.x;
+          const ny=patch.y!==undefined?Math.max(0,Math.min(CH-el.h,el.y+patch.y)):el.y;
+          return{...el,x:nx,y:ny};
+        }));
       }
     };
     window.addEventListener("keydown",kd);
     return()=>window.removeEventListener("keydown",kd);
-  },[sel,undo,redo,pushHistory]);
+  },[sel,undo,redo,pushHistory,CW,CH]);
 
+  // ── UPDATE / COMMIT ──
   const updateEl=useCallback((id,patch)=>{
     setEls(a=>a.map(e=>e.id===id?{...e,...patch}:e));
     setDragStatus(s=>{const base=s||{};return{...base,...patch};});
@@ -684,20 +1484,27 @@ export default function PBIDesigner(){
     setEls(curr=>{pushHistory([...curr]);return curr;});
   },[pushHistory]);
 
+  // ── DROP ──
   const handleDrop=e=>{
     const type=e.dataTransfer.getData("elementType");if(!type)return;
     const rect=canvasRef.current.getBoundingClientRect();
     const rx=(e.clientX-rect.left)/zoom,ry=(e.clientY-rect.top)/zoom;
-    const[w,h]=DEF_SIZE[type]||[160,100];
-    const x=snapGrid?snap(Math.round(rx-w/2)):Math.round(rx-w/2);
-    const y=snapGrid?snap(Math.round(ry-h/2)):Math.round(ry-h/2);
+    const[dw,dh]=DEF_SIZE[type]||[160,100];
+    // Tamaño clampado al canvas
+    const w=Math.min(dw,CW), h=Math.min(dh,CH);
+    let x=snapGrid?snap(Math.round(rx-w/2)):Math.round(rx-w/2);
+    let y=snapGrid?snap(Math.round(ry-h/2)):Math.round(ry-h/2);
+    // Posición clampada: el elemento queda completo dentro del canvas
+    x=Math.max(0,Math.min(CW-w,x));
+    y=Math.max(0,Math.min(CH-h,y));
     const info=PALETTE.find(p=>p.type===type);
     const id=nextId;
-    const newEl={id,type,x:Math.max(0,x),y:Math.max(0,y),w,h,label:info?.label||type};
+    const newEl={id,type,x,y,w,h,label:info?.label||type};
     setEls(a=>{const n=[...a,newEl];pushHistory(n);return n;});
     setNextId(n=>n+1);setSel(id);
   };
 
+  // ── FILES ──
   const handleFiles=async files=>{
     const r=[];for(const f of files){try{r.push(await readFile(f));}catch(e){}}
     setAtts(a=>[...a,...r]);
@@ -708,239 +1515,390 @@ export default function PBIDesigner(){
     if(imgs.length)handleFiles(imgs);
   };
 
-  // sendMsg con fallback mejorado para JSON suelto y normalización de atributos
-  const sendMsg = async () => {
-  if ((!input.trim() && atts.length === 0) || loading) return;
-  const text = input.trim();
-  setInput("");
+  // ── ENVIAR AL AI ──
+  const sendMsg=async(opts={})=>{
+    // opts.prompt = texto técnico para la IA; opts.visible = lo que se muestra como mensaje del usuario
+    const useOverride=opts&&typeof opts==="object"&&opts.prompt;
+    if(!useOverride&&(!input.trim()&&atts.length===0||loading))return;
+    if(loading)return;
+    const text=useOverride?opts.prompt:input.trim();
+    const visibleText=useOverride?(opts.visible||opts.prompt):text;
+    if(!useOverride)setInput("");
+    const userContent=[];
+    atts.forEach(a=>{
+      if(a.type==="image")userContent.push({type:"image",source:{type:"base64",media_type:a.mediaType,data:a.base64}});
+      else userContent.push({type:"text",text:`[File: ${a.name}]\n${a.content?.slice(0,4000)||""}`});
+    });
+    if(text)userContent.push({type:"text",text});
+    setMsgs(m=>[...m,{role:"user",text:[atts.map(a=>`📎 ${a.name}`).join(" "),visibleText].filter(Boolean).join("\n"),atts:[...atts]}]);
+    setAtts([]);setLoading(true);
+    const hist=msgs.slice(-8).map(m=>({role:m.role==="ai"?"assistant":"user",content:m.text}));
+    const curState={ct,elements:els};
+    const{text:aiText,layout,audit}=await callAI([...hist,{role:"user",content:userContent.length===1&&userContent[0].type==="text"?userContent[0].text:userContent}],CW,CH,curState);
 
-  const userContent = [];
-  atts.forEach(a => {
-    if (a.type === "image") {
-      userContent.push({ type: "image", source: { type: "base64", media_type: a.mediaType, data: a.base64 } });
-    } else {
-      userContent.push({ type: "text", text: `[File: ${a.name}]\n${a.content?.slice(0, 4000) || ""}` });
+    // ── Resultado de auditoría ────────────────────────────────
+    if(audit){
+      setAuditResult(audit);
+      setMsgs(m=>[...m,{role:"ai",text:aiText||"Auditoría completada — revisa el panel de resultados."}]);
+      setLoading(false); return;
     }
-  });
-
-  let finalText = text;
-  if (els.length > 0) {
-    const elementSummary = els.slice(0, 5).map(e => `${e.type} (${e.x},${e.y})`).join(', ');
-    finalText = `[Diseño actual: ${els.length} elementos - ${elementSummary}${els.length > 5 ? '...' : ''}]. ${text}`;
-  }
-  if (finalText) userContent.push({ type: "text", text: finalText });
-
-  setMsgs(prev => [...prev, { role: "user", text: [atts.map(a => `📎 ${a.name}`).join(" "), text].filter(Boolean).join("\n"), atts: [...atts] }]);
-  setAtts([]);
-  setLoading(true);
-
-  const hist = msgs.slice(-6).map(m => ({ role: m.role === "ai" ? "assistant" : "user", content: m.text }));
-
-  try {
-    const { text: aiText, layout } = await callAI(hist.concat([{ role: "user", content: userContent.length === 1 && userContent[0].type === "text" ? userContent[0].text : userContent }]));
-
-    console.log('📦 Layout recibido del backend:', layout);
-
-    if (layout && layout.elements && layout.elements.length > 0) {
-      // Mapeo de tipos no estándar
-      const typeMap = {
-        "lineChart": "line",
-        "gauge": "kpi",
-        "waterfall": "bar",
-        "scatter": "line",
-        "ribbon": "line",
-        "map": "image",
-        "funnel": "bar",
-        "donut": "pie"
-      };
-
-      let newEls = layout.elements.map(el => ({
-        id: el.id || Math.random(),
-        type: typeMap[el.type] || el.type || "kpi",
-        x: el.x || 0,
-        y: el.y || 0,
-        w: el.w || 160,
-        h: el.h || 90,
-        label: el.label || "Elemento"
-      }));
-
-      // --- NORMALIZACIÓN DE COORDENADAS (reubica, no descarta) ---
-      const navWidth = layout.navConfig?.width || 190;
-      const headerHeight = layout.header?.height || 58;
-      const gap = 8;
-      const margin = 8;
-
-      // 1. Reorganizar KPIs
-      const kpis = newEls.filter(el => el.type === "kpi");
-      if (kpis.length > 0) {
-        const contentWidth = 960 - navWidth - margin * 2;
-        const totalGaps = (kpis.length - 1) * gap;
-        const kpiWidth = Math.floor((contentWidth - totalGaps) / kpis.length);
-        const startX = navWidth + margin;
-        const startY = headerHeight + margin;
-        kpis.forEach((el, idx) => {
-          el.x = startX + idx * (kpiWidth + gap);
-          el.y = startY;
-          el.w = kpiWidth;
-          el.h = 90;
-        });
+    if(layout){
+      // Solo aplica canvasTheme si la IA lo envió explícitamente (no null)
+      if(layout.canvasTheme&&typeof layout.canvasTheme==="object"&&Object.keys(layout.canvasTheme).length>0){
+        setCt(prev=>({...prev,...layout.canvasTheme}));
       }
+      if(layout.elements?.length){
+        const maxX=Math.max(...layout.elements.map(e=>(e.x||0)+(e.w||0)));
+        const maxY=Math.max(...layout.elements.map(e=>(e.y||0)+(e.h||0)));
+        // Es vertical si: estamos en modo móvil, o el layout es claramente vertical
+        const isVerticalLayout=viewMode==="mobile"||maxY>maxX||maxY>900||CH>CW;
+        const targetW=isVerticalLayout?900:CW;
+        const targetH=isVerticalLayout?1600:CH;
 
-      // 2. Gráficos en dos columnas
-      const charts = newEls.filter(el => (el.type === "bar" || el.type === "line" || el.type === "pie") && el.y < 250);
-      if (charts.length > 0) {
-        const chartWidth = Math.floor((960 - navWidth - margin * 3) / 2);
-        const startX = navWidth + margin;
-        const startY = (kpis.length > 0 ? (headerHeight + margin + 90 + gap) : (headerHeight + margin));
-        charts.forEach((el, idx) => {
-          const col = idx % 2;
-          el.x = startX + col * (chartWidth + gap);
-          el.y = startY;
-          el.w = chartWidth;
-          el.h = 210;
+        let newEls=layout.elements.map(e=>{
+          let w=Math.min(e.w||160,targetW), h=Math.min(e.h||90,targetH);
+          let x=Math.max(0,Math.min(e.x||0,targetW-w));
+          let y=Math.max(0,Math.min(e.y||0,targetH-h));
+          if(x+w>targetW)w=targetW-x;
+          if(y+h>targetH)h=targetH-y;
+          return{...e,x,y,w,h};
         });
+        if(isVerticalLayout){
+          newEls=forceStackVertical(newEls,targetW,targetH);
+          const mh=mobileCanvasHeight(newEls);
+          setMobileH(mh);
+          if(CH<=CW){suppressResize.current=true;const v=CANVAS_SIZES.find(s=>s.id==="900x1600");if(v)setCanvasSize(v);}
+          // Guardar como diseño móvil
+          setMobileEls(newEls.map(e=>({...e})));
+          if(viewMode!=="mobile")setViewMode("mobile");
+        }
+        setEls(newEls);pushHistory(newEls);
+        const validIds=layout.elements.map(e=>e.id).filter(id=>typeof id==="number"&&!isNaN(id));
+        setNextId(Math.max(...(validIds.length?validIds:[0]),nextId)+1);setSel(null);
       }
-
-      // 3. Tablas en la parte inferior
-      const tables = newEls.filter(el => el.type === "table");
-      if (tables.length > 0) {
-        const startY = (charts.length > 0 ? (headerHeight + margin + 90 + gap + 210 + gap) : (headerHeight + margin + 90 + gap));
-        tables.forEach((el, idx) => {
-          el.x = navWidth + margin;
-          el.y = startY + idx * (200 + gap);
-          el.w = 960 - navWidth - margin * 2;
-          el.h = 180;
-        });
-      }
-
-      // 4. Reubicar cualquier elemento que quede fuera del canvas (en lugar de descartarlo)
-      const finalElements = newEls.map(el => {
-        let { x, y, w, h } = el;
-        if (x < 0) x = 0;
-        if (x + w > 960) x = 960 - w;
-        if (y < 0) y = 0;
-        if (y + h > 580) y = 580 - h;
-        if (w <= 0) w = 160;
-        if (h <= 0) h = 90;
-        if (x < 0) x = 0;
-        if (y < 0) y = 0;
-        if (x + w > 960) w = 960 - x;
-        if (y + h > 580) h = 580 - y;
-        return { ...el, x, y, w, h };
-      });
-
-      console.log(`🎨 Aplicando ${finalElements.length} elementos (reubicados si fue necesario)`, finalElements);
-      setEls(finalElements);
-      pushHistory(finalElements);
-      const maxId = Math.max(...finalElements.map(e => e.id), 0);
-      setNextId(maxId + 1);
-      setSel(null);
-
-      if (layout.header) setHdrCfg(h => ({ ...h, ...layout.header }));
-      if (layout.navConfig) setNavCfg(n => ({ ...n, ...layout.navConfig }));
-    } else {
-      console.warn('⚠️ El layout no contiene elementos o es nulo:', layout);
+      if(layout.header)setHdrCfg(h=>({...h,...layout.header}));
+      if(layout.navConfig)setNavCfg(n=>({...n,...layout.navConfig,
+        colors:{...NAV_DEFAULT.colors,...(n.colors||{}),...(layout.navConfig.colors||{})},
+        pages:layout.navConfig.pages||n.pages||NAV_DEFAULT.pages}));
     }
-
-    setMsgs(prev => [...prev, { role: "ai", text: aiText || (layout?.elements?.length ? "✅ Dashboard creado." : "No se generaron elementos. Intenta con más detalles.") }]);
-  } catch (error) {
-    console.error('Error en sendMsg:', error);
-    setMsgs(prev => [...prev, { role: "ai", text: `Error: ${error.message}` }]);
-  } finally {
+    setMsgs(m=>[...m,{role:"ai",text:aiText||"Diseño aplicado en el canvas."}]);
     setLoading(false);
-  }
-};
+  };
+
+  // ── PRESETS ──
+  // ── ALTERNAR VISTA NORMAL / MÓVIL ──
+  const switchToMobile=()=>{
+    if(viewMode==="mobile")return;
+    desktopBackup.current=els.map(e=>({...e}));
+    desktopSizeBackup.current={size:canvasSize,cw:CW,ch:CH,customW,customH};
+    suppressResize.current=true;
+    const vSize=CANVAS_SIZES.find(s=>s.id==="900x1600");
+    if(vSize)setCanvasSize(vSize);
+    setViewMode("mobile");
+    setSel(null);
+    if(mobileEls){
+      // Calcular altura según el contenido móvil existente
+      const maxBottom=Math.max(1600,...mobileEls.map(e=>(e.y||0)+(e.h||0)+20));
+      setMobileH(Math.ceil(maxBottom/100)*100);
+      setEls(mobileEls.map(e=>({...e})));
+      setMsgs(m=>[...m,{role:"ai",text:"📱 Vista móvil. Puedes editarla o pedirme cambios. Usa 🖥️ para volver a la normal."}]);
+    }else{
+      const generated=forceStackVertical(els.map(e=>({...e})),900,1600);
+      setMobileH(mobileCanvasHeight(generated));
+      setEls(generated);
+      setMobileEls(generated.map(e=>({...e})));
+      pushHistory(generated);
+      const hNote=generated.neededHeight>1600?` (canvas extendido a ${mobileCanvasHeight(generated)}px de alto para que quepa todo)`:"";
+      setMsgs(m=>[...m,{role:"ai",text:`📱 Generé la vista móvil apilando los elementos verticalmente${hNote}. Edítala o pídeme ajustes. El botón 🖥️ regresa a la vista normal.`}]);
+    }
+  };
+  const switchToDesktop=()=>{
+    if(viewMode==="desktop")return;
+    setMobileEls(els.map(e=>({...e})));
+    suppressResize.current=true;
+    const bk=desktopSizeBackup.current;
+    if(bk){
+      // Restaurar tamaño exacto (incluye custom)
+      if(bk.size?.id==="custom"){
+        setCustomW(bk.customW);setCustomH(bk.customH);
+        setDraftW(bk.customW);setDraftH(bk.customH);
+      }
+      if(bk.size)setCanvasSize(bk.size);
+    }
+    setViewMode("desktop");
+    setSel(null);
+    if(desktopBackup.current)setEls(desktopBackup.current.map(e=>({...e})));
+    setMsgs(m=>[...m,{role:"ai",text:"🖥️ Vista normal. Tu diseño móvil quedó guardado — vuelve con 📱 cuando quieras."}]);
+  };
+  const regenerateMobile=()=>{
+    const source=desktopBackup.current||els;
+    const generated=forceStackVertical(source.map(e=>({...e})),900,1600);
+    setMobileH(mobileCanvasHeight(generated));
+    setEls(generated);setMobileEls(generated.map(e=>({...e})));pushHistory(generated);
+    setMsgs(m=>[...m,{role:"ai",text:"🔄 Vista móvil regenerada desde el diseño normal."}]);
+  };
 
   const loadPreset=key=>{
     const p=PRESETS[key];if(!p)return;
     setCt({...CANVAS_DEFAULT,...p.ct});
-    setNavCfg(p.nav);setHdrCfg(p.header);
-    const newEls=p.els.map(e=>({...e}));
-    setEls(newEls);pushHistory(newEls);setSel(null);
-    setMsgs(m=>[...m,{role:"ai",text:`✅ Plantilla "${key}" cargada — ${p.els.length} elementos.`}]);
-  };
-
-  const downloadAll=()=>{
-    dlUri("pbi-theme.json",JSON.stringify(buildThemeJson(ct),null,2),"application/json");
-    dlUri("pbi-layout.json",JSON.stringify(buildLayoutJson(els,ct,navCfg,hdrCfg),null,2),"application/json");
-    dlUri("README.txt",buildReadme(els,ct,navCfg),"text/plain");
-    if(navCfg.exportSeparate)dlUri("pbi-nav.json",JSON.stringify({navigation:{...navCfg,accent:ct.accent}},null,2),"application/json");
-  };
-
-  const copyToClipboard=async(text)=>{
-    try{
-      await navigator.clipboard.writeText(text);
-      alert("Copiado al portapapeles");
-    }catch(err){
-      const textarea=document.createElement("textarea");
-      textarea.value=text;
-      document.body.appendChild(textarea);
-      textarea.select();
-      document.execCommand("copy");
-      document.body.removeChild(textarea);
-      alert("Copiado al portapapeles");
+    // Merge con NAV_DEFAULT para garantizar pages, colors y demás props del panel
+    setNavCfg({...NAV_DEFAULT,...p.nav,
+      colors:{...NAV_DEFAULT.colors,...(p.nav.colors||{})},
+      pages:p.nav.pages||NAV_DEFAULT.pages.map(pg=>({...pg}))});
+    setHdrCfg({...p.header});
+    // Las plantillas están diseñadas para 960×580. Si el canvas actual es distinto,
+    // escalar los elementos anclando el contenido al header (sin huecos).
+    const BASE_W=960, BASE_H=580;
+    let newEls=p.els.map(e=>({...e}));
+    if(CW!==BASE_W||CH!==BASE_H){
+      const header=newEls.find(e=>e.type==="header");
+      const headerH=header?header.h:0;
+      const oldHeaderBottom=header?(header.y+header.h):0;
+      const navLeft=newEls.find(e=>e.type==="nav"&&e.h>e.w);
+      const navRight=navLeft&&navLeft.x>BASE_W/2;
+      const navW=navLeft?navLeft.w:0;
+      newEls=newEls.map(e=>{
+        if(e.type==="header")return{...e,x:0,y:0,w:CW,h:e.h};
+        if(e.type==="nav"&&e.h>e.w){
+          const navX=navRight?CW-e.w:0;
+          return{...e,x:navX,y:headerH,w:e.w,h:CH-headerH};
+        }
+        if(e.type==="nav")return{...e,x:0,y:headerH,w:CW,h:e.h};
+        const oldContentH=BASE_H-oldHeaderBottom, newContentH=CH-headerH;
+        const cry=oldContentH>0?newContentH/oldContentH:1;
+        const newY=Math.round(headerH+(e.y-oldHeaderBottom)*cry);
+        const oldLeft=navLeft&&!navRight?navW:0, newLeft=navLeft&&!navRight?navW:0;
+        const oldContentW=BASE_W-oldLeft-(navRight?navW:0), newContentW=CW-newLeft-(navRight?navW:0);
+        const crx=oldContentW>0?newContentW/oldContentW:1;
+        const newX=Math.round(newLeft+(e.x-oldLeft)*crx);
+        return{...e,x:newX,y:newY,w:Math.max(MIN_W,Math.round(e.w*crx)),h:Math.max(MIN_H,Math.round(e.h*cry))};
+      });
     }
+    setEls(newEls);pushHistory(newEls);setSel(null);
+    const sizeNote=(CW!==BASE_W||CH!==BASE_H)?` (adaptada a ${CW}×${CH})`:"";
+    setMsgs(m=>[...m,{role:"ai",text:`✅ Plantilla "${p.header.title}" cargada — ${p.els.length} elementos${sizeNote}. Pídeme ajustes o cámbiale los colores cuando quieras.`}]);
   };
 
-  const getExportText=()=>{
-    if(exportActiveTab==="theme") return JSON.stringify(buildThemeJson(ct),null,2);
-    if(exportActiveTab==="layout") return JSON.stringify(buildLayoutJson(els,ct,navCfg,hdrCfg),null,2);
-    return buildReadme(els,ct,navCfg);
-  };
+  // ── EXPORT ── (las descargas se manejan en ExportModal)
 
+  // ── STYLE SHORTCUTS (todos usan A = app theme) ──
   const B=(x={})=>({padding:"5px 10px",background:A.surface,border:`1px solid ${A.border2}`,color:A.textMuted,borderRadius:6,cursor:"pointer",fontSize:9,fontFamily:"'Segoe UI',sans-serif",...x});
   const PB=(x={})=>({padding:"5px 13px",background:A.accent,border:"none",color:"#fff",borderRadius:6,cursor:"pointer",fontSize:9,fontWeight:700,...x});
   const IS={background:A.surface,border:`1px solid ${A.border2}`,color:A.text,borderRadius:5,padding:"4px 8px",fontSize:9,fontFamily:"monospace",outline:"none",width:"100%",boxSizing:"border-box"};
   const LS={fontSize:8,color:A.textMuted,fontFamily:"monospace",letterSpacing:0.4,marginBottom:3,display:"block",textTransform:"uppercase"};
 
-  return (
+  return(
     <div style={{width:"100vw",height:"100vh",background:A.bg,display:"flex",flexDirection:"column",fontFamily:"'Segoe UI',system-ui,sans-serif",color:A.text,position:"relative"}}>
-      {/* TOPBAR */}
-      <div style={{height:48,background:A.topbar,borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",padding:"0 14px",gap:8,zIndex:1000,flexShrink:0,boxShadow:`0 1px 3px ${rgba(A.accent,0.07)}`}}>
+
+      {/* ══ TOPBAR ══════════════════════════════════════════════════ */}
+      <div style={{minHeight:48,background:A.topbar,borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",padding:"4px 12px",gap:6,zIndex:1000,flexShrink:0,boxShadow:`0 1px 3px ${rgba(A.accent,0.07)}`,flexWrap:"wrap",rowGap:4}}>
+        {/* Logo */}
         <div style={{display:"flex",alignItems:"center",gap:8,marginRight:6}}>
           <div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${A.accent},${adjHex(A.accent,0.75)})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontWeight:900,flexShrink:0}}>⬡</div>
-          <div><div style={{fontSize:11,fontWeight:800,color:A.text,lineHeight:1.1}}>PBI Designer</div><div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:0.8}}>v1.5 · AI</div></div>
+          <div>
+            <div style={{fontSize:11,fontWeight:800,color:A.text,lineHeight:1.1}}>PBI Designer</div>
+            <div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:0.8}}>v2.0 · AI</div>
+          </div>
         </div>
         <div style={{width:1,height:22,background:A.border}}/>
+
+        {/* Temas de interfaz */}
         <div style={{display:"flex",alignItems:"center",gap:4}}>
           <span style={{fontSize:8,color:A.textMuted,fontFamily:"monospace",flexShrink:0}}>UI</span>
           {Object.values(APP_THEMES).map(t=>(
             <button key={t.id} onClick={()=>setAppThemeId(t.id)} title={t.name}
-              style={{width:24,height:24,borderRadius:5,background:t.surface,border:`2px solid ${appThemeId===t.id?A.accent:A.border}`,cursor:"pointer",fontSize:12,transition:"all 0.15s",transform:appThemeId===t.id?"scale(1.2)":"scale(1)",display:"flex",alignItems:"center",justifyContent:"center"}}>{t.icon}</button>
+              style={{width:24,height:24,borderRadius:5,background:t.surface,border:`2px solid ${appThemeId===t.id?A.accent:A.border}`,cursor:"pointer",fontSize:12,transition:"all 0.15s",transform:appThemeId===t.id?"scale(1.2)":"scale(1)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              {t.icon}
+            </button>
           ))}
         </div>
         <div style={{width:1,height:22,background:A.border}}/>
+
+        {/* Zoom */}
         <div style={{display:"flex",alignItems:"center",gap:3}}>
           <button onClick={()=>setZoom(z=>+(Math.max(0.3,z-0.1)).toFixed(1))} style={B({width:22,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14})}>−</button>
           <span style={{fontSize:9,color:A.textMuted,fontFamily:"monospace",width:34,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
           <button onClick={()=>setZoom(z=>+(Math.min(2,z+0.1)).toFixed(1))} style={B({width:22,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14})}>+</button>
-          <button onClick={()=>setZoom(0.82)} style={B({fontSize:8,padding:"0 6px",height:22})}>FIT</button>
+          <button onClick={()=>{
+            // FIT dinámico según tamaño de canvas y viewport disponible
+            const vw=window.innerWidth-panelW-(aiOpen?aiW:0)-80;
+            const vh=window.innerHeight-48-22-(resizePrompt?40:0)-80;
+            setZoom(+Math.max(0.1,Math.min(vw/CW,vh/(CH+26),1)).toFixed(2));
+          }} style={B({fontSize:8,padding:"0 6px",height:22})}>FIT</button>
         </div>
         <div style={{width:1,height:22,background:A.border}}/>
+
+        {/* Toggle Vista Normal / Móvil — como en Power BI real */}
+        <div style={{display:"flex",alignItems:"center",background:A.bg,borderRadius:6,padding:2,gap:2,border:`1px solid ${A.border2}`,flexShrink:0}}>
+          <button onClick={switchToDesktop} title="Vista normal (escritorio)"
+            style={{padding:"3px 9px",borderRadius:4,border:"none",cursor:"pointer",fontSize:9,fontWeight:viewMode==="desktop"?700:400,
+              background:viewMode==="desktop"?A.accent:"transparent",color:viewMode==="desktop"?"#fff":A.textMuted,
+              display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+            🖥️ Normal
+          </button>
+          <button onClick={()=>{
+              if(els.length===0&&!mobileEls){
+                setMsgs(m=>[...m,{role:"ai",text:"Primero crea un diseño en la vista normal. Luego podrás generar su versión móvil. 📱"}]);
+                return;
+              }
+              switchToMobile();
+            }} title={mobileEls?"Ver diseño móvil":"Generar y ver diseño móvil"}
+            style={{padding:"3px 9px",borderRadius:4,border:"none",cursor:"pointer",fontSize:9,fontWeight:viewMode==="mobile"?700:400,
+              background:viewMode==="mobile"?A.accent:"transparent",color:viewMode==="mobile"?"#fff":A.textMuted,
+              display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+            📱 Móvil{mobileEls?" ✓":""}
+          </button>
+        </div>
+        {viewMode==="mobile"&&(
+          <button onClick={regenerateMobile} title="Regenerar vista móvil desde el diseño normal"
+            style={B({fontSize:11,padding:"0 7px",height:22,flexShrink:0})}>🔄</button>
+        )}
+
+        <div style={{width:1,height:22,background:A.border}}/>
+
+        {/* Selector de tamaño de canvas */}
+        <div style={{display:"flex",alignItems:"center",gap:5}}>
+          <span style={{fontSize:8,color:A.textMuted,fontFamily:"monospace",flexShrink:0}}>CANVAS</span>
+          {viewMode==="mobile"?(
+            // En móvil: tamaño bloqueado al estándar Power BI Mobile (no editable)
+            <div title="En vista móvil el ancho es fijo (900px, estándar Power BI Mobile). La altura se ajusta al contenido."
+              style={{display:"flex",alignItems:"center",gap:5,fontSize:8,fontFamily:"monospace",
+                background:rgba(A.accent,0.08),color:A.accent,border:`1px solid ${rgba(A.accent,0.3)}`,
+                borderRadius:5,padding:"3px 8px",fontWeight:700}}>
+              🔒 900×{CH} · Móvil
+            </div>
+          ):(<>
+          <select value={canvasSize.id}
+            onChange={e=>{
+              const s=CANVAS_SIZES.find(x=>x.id===e.target.value);
+              if(!s)return;
+              // Capturar el tamaño actual ANTES de cambiar (evita closures obsoletos)
+              const curW=CW, curH=CH;
+              if(s.id==="custom"){
+                setCustomW(curW);setCustomH(curH);setDraftW(curW);setDraftH(curH);
+                setCanvasSize(s);
+                return;
+              }
+              const newW=s.w, newH=s.h;
+              // Si hay elementos y el tamaño cambia, escalar automáticamente
+              if(els.length>0&&(newW!==curW||newH!==curH)){
+                suppressResize.current=true; // escalamos directo, sin banner
+                scaleElementsTo(curW,curH,newW,newH);
+              }
+              setCanvasSize(s);
+            }}
+            style={{fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border2}`,borderRadius:5,padding:"2px 4px",cursor:"pointer"}}>
+            {CANVAS_SIZES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
+          </select></>)}
+          {viewMode!=="mobile"&&canvasSize.id==="custom"&&<>
+            <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
+              <div style={{position:"absolute",left:4,display:"flex",flexDirection:"column",alignItems:"center",pointerEvents:"none",lineHeight:1}}>
+                <span style={{fontSize:9,fontWeight:800,color:A.accent,fontFamily:"monospace"}}>A</span>
+                <span style={{fontSize:8,color:A.accent,marginTop:-1}}>↔</span>
+              </div>
+              <input type="number" value={draftW} onChange={e=>setDraftW(+e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter")applyCustomSize();}}
+                title="Ancho (px)" min={200} max={4000}
+                style={{width:62,fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border2}`,borderRadius:4,padding:"2px 4px 2px 20px",textAlign:"center"}}/>
+            </div>
+            <span style={{fontSize:8,color:A.textMuted}}>×</span>
+            <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
+              <div style={{position:"absolute",left:4,display:"flex",flexDirection:"row",alignItems:"center",gap:1,pointerEvents:"none",lineHeight:1}}>
+                <span style={{fontSize:9,fontWeight:800,color:"#d97706",fontFamily:"monospace"}}>H</span>
+                <span style={{fontSize:8,color:"#d97706"}}>↕</span>
+              </div>
+              <input type="number" value={draftH} onChange={e=>setDraftH(+e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter")applyCustomSize();}}
+                title="Alto (px)" min={200} max={4000}
+                style={{width:62,fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border2}`,borderRadius:4,padding:"2px 4px 2px 22px",textAlign:"center"}}/>
+            </div>
+            <button onClick={applyCustomSize}
+              disabled={draftW===customW&&draftH===customH}
+              title="Aplicar tamaño personalizado"
+              style={{fontSize:8,fontWeight:700,padding:"3px 9px",borderRadius:5,border:"none",cursor:(draftW===customW&&draftH===customH)?"default":"pointer",
+                background:(draftW===customW&&draftH===customH)?A.border:A.accent,
+                color:(draftW===customW&&draftH===customH)?A.textLight:"#fff",whiteSpace:"nowrap"}}>
+              Aplicar
+            </button>
+          </>}
+          <span style={{fontSize:7,color:A.textLight,fontFamily:"monospace"}}>{CW}×{CH}</span>
+        </div>
+        <div style={{width:1,height:22,background:A.border}}/>
+
+        {/* Grid / Snap */}
         {[["⊡",showGrid,"Grid",()=>setShowGrid(x=>!x)],["⊞",snapGrid,"Snap",()=>setSnapGrid(x=>!x)]].map(([ic,on,tip,fn])=>(
-          <button key={tip} onClick={fn} title={`${tip} ${on?"ON":"OFF"}`} style={B({width:26,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,background:on?A.accentBg:A.surface,borderColor:on?A.accentLight:A.border2,color:on?A.accent:A.textLight})}>{ic}</button>
+          <button key={tip} onClick={fn} title={`${tip} ${on?"ON":"OFF"}`}
+            style={B({width:26,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,background:on?A.accentBg:A.surface,borderColor:on?A.accentLight:A.border2,color:on?A.accent:A.textLight})}>{ic}</button>
         ))}
         <div style={{width:1,height:22,background:A.border}}/>
+
+        {/* Undo / Redo */}
         <button onClick={undo} disabled={histIdx===0} title="Ctrl+Z" style={B({width:24,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:histIdx===0?0.3:1})}>↩</button>
         <button onClick={redo} disabled={histIdx>=history.length-1} title="Ctrl+Y" style={B({width:24,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:histIdx>=history.length-1?0.3:1})}>↪</button>
+
         <span style={{fontSize:8,color:A.textLight,fontFamily:"monospace"}}>{els.length} elem</span>
-        {dragStatus&&<span style={{fontSize:8,color:A.accent,background:A.accentBg,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>x:{dragStatus.x??""} y:{dragStatus.y??""}{dragStatus.w?` · ${dragStatus.w}×${dragStatus.h}`:""}</span>}
+        {dragStatus&&<span style={{fontSize:8,color:A.accent,background:A.accentBg,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>
+          x:{dragStatus.x??""} y:{dragStatus.y??""}{dragStatus.w?` · ${dragStatus.w}×${dragStatus.h}`:""}
+        </span>}
+
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
           {sel&&<button onClick={()=>{setEls(a=>{const n=a.filter(e=>e.id!==sel);pushHistory(n);return n;});setSel(null);}} style={B({color:A.danger,borderColor:rgba(A.danger,0.3),background:rgba(A.danger,0.06)})}>🗑 Delete</button>}
-          <button onClick={()=>setAiOpen(o=>!o)} style={B({color:A.accent,borderColor:A.accentLight,background:A.accentBg})}>{aiOpen?"◀ Ocultar IA":"▶ Chat IA"}</button>
+          {/* Nuevo lienzo */}
+          <button onClick={()=>{
+            if(els.length===0){
+              setMsgs(m=>[...m,{role:"ai",text:"El lienzo ya está vacío. Describe tu nuevo dashboard. 🆕"}]);
+              return;
+            }
+            setConfirmNew(true);
+          }} title="Nuevo lienzo (limpiar todo)"
+            style={{padding:"5px 11px",borderRadius:6,background:A.accentBg,border:`1px solid ${A.accentLight}`,
+              color:A.accent,fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+            📊 Nuevo
+          </button>
+          <button onClick={()=>setVersionsModal(true)} title="Guardar y cargar diseños"
+            style={B({padding:"6px 11px",fontSize:10,display:"flex",alignItems:"center",gap:5,flexShrink:0})}>📂 Diseños</button>
+          <button onClick={()=>setThemeModal(true)} title="Biblioteca de temas de marca"
+            style={B({padding:"6px 11px",fontSize:10,display:"flex",alignItems:"center",gap:5,flexShrink:0})}>🎨 Temas</button>
           <button onClick={()=>setExportModal(true)} style={PB({boxShadow:`0 3px 10px ${rgba(A.accent,0.35)}`})}>↗ Exportar PBI</button>
+          <button onClick={()=>setAiOpen(o=>!o)} style={B({color:A.accent,borderColor:A.accentLight,background:A.accentBg})}>{aiOpen?"◀ Ocultar IA":"▶ Chat IA"}</button>
         </div>
       </div>
 
-      {/* BODY: LEFT PANEL + CANVAS + AI PANEL */}
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        {/* LEFT PANEL */}
-        <div style={{width:162,background:A.sidebar,borderRight:`1px solid ${A.border}`,display:"flex",flexDirection:"column",flexShrink:0}}>
-          <div style={{display:"flex",borderBottom:`1px solid ${A.border}`,flexShrink:0}}>
-            {[["elements","⊞"],["properties","⚙"],["presets","⬡"]].map(([t,ic])=>(
-              <button key={t} onClick={()=>setTab(t)} style={{flex:1,padding:"7px 0",background:tab===t?A.accentBg:"transparent",border:"none",color:tab===t?A.accent:A.textMuted,fontSize:12,cursor:"pointer",borderBottom:tab===t?`2px solid ${A.accent}`:"2px solid transparent",transition:"all 0.15s"}}>{ic}</button>
+      {/* ══ BODY ════════════════════════════════════════════════════ */}
+      <div style={{flex:1,display:"flex",overflow:"hidden",minWidth:0,width:"100%"}}>
+
+        {/* ── PANEL IZQUIERDO (redimensionable + colapsable) ── */}
+        {leftOpen?(
+        <div style={{width:panelW,background:A.sidebar,borderRight:`1px solid ${A.border}`,display:"flex",flexDirection:"column",flexShrink:0,position:"relative"}}>
+          {/* Drag handle para redimensionar */}
+          <div
+            onMouseDown={e=>{
+              e.preventDefault();
+              const sx=e.clientX, sw=panelW;
+              const mv=ev=>setPanelW(Math.max(150,Math.min(340,sw+(ev.clientX-sx))));
+              const up=()=>{window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);};
+              window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up);
+            }}
+            style={{position:"absolute",right:-3,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:60}}
+            onMouseEnter={e=>e.currentTarget.style.background=rgba(A.accent,0.25)}
+            onMouseLeave={e=>e.currentTarget.style.background="transparent"}
+          />
+          <div style={{display:"flex",alignItems:"stretch",borderBottom:`1px solid ${A.border}`,flexShrink:0}}>
+            {[["elements","⊞","Elementos"],["properties","⚙","Propiedades"],["presets","⬡","Plantillas"]].map(([t,ic,lbl])=>(
+              <button key={t} onClick={()=>setTab(t)} title={lbl}
+                style={{flex:1,padding:"7px 0",background:tab===t?A.accentBg:"transparent",border:"none",color:tab===t?A.accent:A.textMuted,fontSize:12,cursor:"pointer",borderBottom:tab===t?`2px solid ${A.accent}`:"2px solid transparent",transition:"all 0.15s"}}>{ic}</button>
             ))}
+            {/* Divisor + botón ocultar panel (integrado, no flotante) */}
+            <div style={{width:1,background:A.border,margin:"6px 0"}}/>
+            <button onClick={()=>setLeftOpen(false)} title="Ocultar panel"
+              style={{width:30,flexShrink:0,padding:0,background:"rgba(34,197,94,0.12)",border:"none",
+                color:"#16a34a",fontSize:11,cursor:"pointer",borderBottom:"2px solid transparent",
+                display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(34,197,94,0.22)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(34,197,94,0.12)";}}>◀</button>
           </div>
+
+          {/* TAB: Elements */}
           {tab==="elements"&&(
             <div style={{flex:1,overflowY:"auto",padding:"7px 6px"}}>
               <div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:1,padding:"3px 6px 6px",textTransform:"uppercase"}}>Arrastra al canvas</div>
@@ -964,35 +1922,108 @@ export default function PBIDesigner(){
               </div>
             </div>
           )}
+
+          {/* TAB: Properties */}
           {tab==="properties"&&(
             <div style={{flex:1,overflowY:"auto",padding:"10px 8px"}}>
               {!selEl
-                ?<div style={{fontSize:9,color:A.textLight,textAlign:"center",padding:"24px 8px",lineHeight:2.1}}>Selecciona un<br/>elemento en el canvas</div>
+                ?(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{fontSize:8,color:A.accent,fontFamily:"monospace",letterSpacing:1,padding:"3px 6px",background:A.accentBg,borderRadius:4,textAlign:"center",textTransform:"uppercase"}}>⬡ Canvas</div>
+                    <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${A.border}`}}>
+                      <div style={{fontSize:8,color:A.accent,fontFamily:"monospace",marginBottom:6,fontWeight:700}}>FONDOS DE PÁGINA</div>
+                      {[["Fondo del lienzo","canvas"],["Papel tapiz","wallpaper"]].map(([l,k])=>(
+                        <div key={k} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                          <input type="color" value={ct[k]||"#ffffff"} onChange={e=>setCt(c=>({...c,[k]:e.target.value,[k+"Gradient"]:null}))}
+                            style={{width:24,height:20,padding:0,border:`1px solid ${A.border2}`,borderRadius:4,cursor:"pointer"}}/>
+                          <span style={{fontSize:8,color:A.textMuted,flex:1}}>{l}</span>
+                          <span style={{fontSize:7,fontFamily:"monospace",color:A.textLight}}>{ct[k]}</span>
+                        </div>
+                      ))}
+                      {/* Editor de gradientes para el papel tapiz */}
+                      <div style={{fontSize:8,color:A.accent,fontFamily:"monospace",margin:"8px 0 5px",fontWeight:700}}>GRADIENTE (papel tapiz)</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginBottom:5}}>
+                        {[
+                          {n:"Ninguno",g:null},
+                          {n:"Azul",g:`linear-gradient(135deg,${ct.accent},${adjHex(ct.accent,0.6)})`},
+                          {n:"Suave",g:`linear-gradient(135deg,${ct.wallpaper||"#e8edf2"},${adjHex(ct.wallpaper||"#e8edf2",0.85)})`},
+                          {n:"Oscuro",g:`linear-gradient(160deg,#1e293b,#0f172a)`},
+                          {n:"Verde",g:`linear-gradient(135deg,#4d7c2f,#2d4a1a)`},
+                          {n:"Atard.",g:`linear-gradient(135deg,#f59e0b,#dc2626)`},
+                          {n:"Violeta",g:`linear-gradient(135deg,#7c3aed,#4c1d95)`},
+                          {n:"Cian",g:`linear-gradient(135deg,#0891b2,#155e75)`},
+                        ].map(opt=>(
+                          <button key={opt.n} onClick={()=>setCt(c=>({...c,wallpaperGradient:opt.g}))}
+                            title={opt.n}
+                            style={{height:26,borderRadius:5,cursor:"pointer",
+                              border:`1.5px solid ${ct.wallpaperGradient===opt.g?A.accent:A.border2}`,
+                              background:opt.g||ct.wallpaper||"#e8edf2",
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              fontSize:6,color:opt.g?"#fff":A.textMuted,fontWeight:600}}>
+                            {opt.g?"":"✕"}
+                          </button>
+                        ))}
+                      </div>
+                      <div style={{fontSize:7,color:A.textLight,lineHeight:1.6,marginTop:4,padding:"5px 7px",background:A.surface,borderRadius:4}}>
+                        💡 El <b>lienzo</b> es la página; el <b>papel tapiz</b> el área alrededor. El gradiente se exporta como imagen SVG de fondo.
+                      </div>
+                    </div>
+                    {/* Validador de accesibilidad WCAG */}
+                    {(()=>{
+                      const checks=[
+                        {l:"Texto / lienzo",fg:ct.text,bg:ct.canvas},
+                        {l:"Texto sec. / tarjeta",fg:ct.textSub,bg:ct.cardBg},
+                        {l:"Acento / lienzo",fg:ct.accent,bg:ct.canvas},
+                        {l:"Texto / header",fg:"#ffffff",bg:ct.headerBg||ct.accent},
+                      ];
+                      const evald=checks.map(c=>({...c,ratio:contrastRatio(c.fg,c.bg)}));
+                      const fails=evald.filter(c=>c.ratio<4.5).length;
+                      return(
+                        <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${fails>0?"#fca5a5":"#86efac"}`}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+                            <div style={{fontSize:8,color:A.accent,fontFamily:"monospace",fontWeight:700}}>♿ ACCESIBILIDAD WCAG</div>
+                            <span style={{fontSize:8,fontWeight:700,padding:"1px 6px",borderRadius:3,
+                              background:fails>0?"#fef2f2":"#f0fdf4",color:fails>0?"#dc2626":"#059669"}}>
+                              {fails>0?`${fails} alerta${fails>1?"s":""}`:"✓ AA"}
+                            </span>
+                          </div>
+                          {evald.map((c,i)=>(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
+                              <div style={{width:22,height:14,borderRadius:3,background:c.bg,border:`1px solid ${A.border2}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                <span style={{fontSize:8,fontWeight:700,color:c.fg}}>A</span>
+                              </div>
+                              <span style={{fontSize:8,color:A.textMuted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.l}</span>
+                              <span style={{fontSize:8,fontWeight:700,fontFamily:"monospace",
+                                color:c.ratio>=4.5?"#059669":c.ratio>=3?"#d97706":"#dc2626"}}>
+                                {c.ratio.toFixed(1)}:1 {c.ratio>=4.5?"✓":c.ratio>=3?"◐":"✕"}
+                              </span>
+                            </div>
+                          ))}
+                          <div style={{fontSize:7,color:A.textLight,lineHeight:1.6,marginTop:5,padding:"5px 7px",background:A.surface,borderRadius:4}}>
+                            WCAG AA exige ≥4.5:1 para texto normal. ✓ cumple · ◐ solo texto grande · ✕ insuficiente.
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <div style={{fontSize:9,color:A.textLight,textAlign:"center",padding:"10px 8px",lineHeight:2}}>Selecciona un elemento<br/>para editar sus propiedades</div>
+                  </div>
+                )
                 :(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     <div style={{fontSize:8,color:A.accent,fontFamily:"monospace",letterSpacing:1,padding:"3px 6px",background:A.accentBg,borderRadius:4,textAlign:"center",textTransform:"uppercase"}}>{selEl.type} #{selEl.id}</div>
                     {[["Label","label","text",selEl.label],["X px","x","number",selEl.x],["Y px","y","number",selEl.y],["Ancho","w","number",selEl.w],["Alto","h","number",selEl.h]].map(([l,f,t,v])=>(
                       <div key={f}>
                         <label style={LS}>{l}</label>
-                        <input type={t} value={v} onChange={e=>updateEl(selEl.id,{[f]:f==="label"?e.target.value:Math.max(f==="x"||f==="y"?0:MIN_W,parseInt(e.target.value)||0)})} onBlur={commitEl} style={IS}/>
+                        <input type={t} value={v}
+                          onChange={e=>updateEl(selEl.id,{[f]:f==="label"?e.target.value:Math.max(f==="x"||f==="y"?0:MIN_W,parseInt(e.target.value)||0)})}
+                          onBlur={commitEl} style={IS}/>
                       </div>
                     ))}
                     {selEl.type==="nav"&&(
-                      <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${A.border}`}}>
-                        <div style={{fontSize:8,color:A.accent,fontFamily:"monospace",marginBottom:6}}>NAV CONFIG</div>
-                        <label style={LS}>Posición</label>
-                        <select value={navCfg.position} onChange={e=>setNavCfg(n=>({...n,position:e.target.value}))} style={{...IS,marginBottom:6}}>
-                          <option value="left">Izquierda</option><option value="right">Derecha</option><option value="top">Superior</option><option value="none">Ninguno</option>
-                        </select>
-                        <label style={LS}>Estilo</label>
-                        <select value={navCfg.style} onChange={e=>setNavCfg(n=>({...n,style:e.target.value}))} style={{...IS,marginBottom:7}}>
-                          <option value="static">Estático</option><option value="collapsible">Colapsable</option><option value="floating">Flotante</option>
-                        </select>
-                        <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:8,color:A.textMuted}}>
-                          <input type="checkbox" checked={navCfg.exportSeparate} onChange={e=>setNavCfg(n=>({...n,exportSeparate:e.target.checked}))} style={{accentColor:A.accent}}/>
-                          Exportar nav separado
-                        </label>
-                      </div>
+                      <NavBuilderPanel
+                        nav={navCfg} setNav={setNavCfg}
+                        activeTab={navBuilderTab} setActiveTab={setNavBuilderTab}
+                        A={A} IS={IS} LS={LS} ct={ct}/>
                     )}
                     {selEl.type==="header"&&(
                       <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${A.border}`}}>
@@ -1005,158 +2036,1334 @@ export default function PBIDesigner(){
                         ))}
                       </div>
                     )}
-                    <button onClick={()=>{setEls(a=>{const n=a.filter(e=>e.id!==sel);pushHistory(n);return n;});setSel(null);}} style={B({color:A.danger,borderColor:rgba(A.danger,0.3),background:rgba(A.danger,0.06),width:"100%",marginTop:4})}>🗑 Eliminar</button>
+                    <button onClick={()=>{setEls(a=>{const n=a.filter(e=>e.id!==sel);pushHistory(n);return n;});setSel(null);}}
+                      style={B({color:A.danger,borderColor:rgba(A.danger,0.3),background:rgba(A.danger,0.06),width:"100%",marginTop:4})}>🗑 Eliminar</button>
                   </div>
                 )
               }
             </div>
           )}
+
+          {/* TAB: Presets */}
           {tab==="presets"&&(
             <div style={{flex:1,overflowY:"auto",padding:"8px 6px"}}>
-              <div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:1,padding:"3px 6px 7px",textTransform:"uppercase"}}>Plantillas completas</div>
-              {[{k:"sales",i:"📊",l:"Ventas",s:"Azul · Nav izq"},{k:"finance",i:"💰",l:"Finanzas",s:"Morado · Oscuro"}].map(p=>(
-                <div key={p.k} onClick={()=>loadPreset(p.k)} style={{display:"flex",alignItems:"center",gap:8,padding:"9px",borderRadius:6,background:A.bg,border:`1px solid ${A.border}`,cursor:"pointer",marginBottom:4,transition:"all 0.12s"}} onMouseEnter={e=>{e.currentTarget.style.background=A.accentBg;e.currentTarget.style.borderColor=A.accentLight;}} onMouseLeave={e=>{e.currentTarget.style.background=A.bg;e.currentTarget.style.borderColor=A.border;}}>
+              <div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:1,padding:"3px 6px 7px",textTransform:"uppercase"}}>Plantillas genéricas</div>
+              {[{k:"sales",i:"📊",l:"Ventas",s:"Azul · Nav izq"},{k:"finance",i:"💰",l:"Finanzas",s:"Morado · Oscuro"},{k:"hr",i:"👥",l:"RRHH",s:"Rosa · Nav der"},{k:"marketing",i:"📢",l:"Marketing",s:"Naranja · Nav top"}].map(p=>(
+                <div key={p.k} onClick={()=>loadPreset(p.k)}
+                  style={{display:"flex",alignItems:"center",gap:8,padding:"9px",borderRadius:6,background:A.bg,border:`1px solid ${A.border}`,cursor:"pointer",marginBottom:4,transition:"all 0.12s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background=A.accentBg;e.currentTarget.style.borderColor=A.accentLight;}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=A.bg;e.currentTarget.style.borderColor=A.border;}}>
                   <span style={{fontSize:14}}>{p.i}</span>
                   <div><div style={{fontSize:9,color:A.text,fontWeight:600}}>{p.l}</div><div style={{fontSize:7,color:A.textMuted}}>{p.s}</div></div>
                 </div>
               ))}
-              <div style={{padding:"9px",borderRadius:6,background:A.accentBg,border:`1px dashed ${A.accentLight}`,fontSize:8,color:A.textMuted,lineHeight:1.7,textAlign:"center",marginTop:6}}>O describe el reporte<br/>en el chat IA 💬</div>
+              <div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:1,padding:"10px 6px 7px",textTransform:"uppercase"}}>Por industria</div>
+              {[{k:"agro",i:"🥑",l:"Agro",s:"Verde · Cosecha y calibres"},{k:"retail",i:"🛒",l:"Retail",s:"Violeta · Ventas y stock"},{k:"salud",i:"🏥",l:"Salud",s:"Cyan · Pacientes y áreas"},{k:"logistica",i:"🚚",l:"Logística",s:"Oscuro · Flota y rutas"}].map(p=>(
+                <div key={p.k} onClick={()=>loadPreset(p.k)}
+                  style={{display:"flex",alignItems:"center",gap:8,padding:"9px",borderRadius:6,background:A.bg,border:`1px solid ${A.border}`,cursor:"pointer",marginBottom:4,transition:"all 0.12s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.background=A.accentBg;e.currentTarget.style.borderColor=A.accentLight;}}
+                  onMouseLeave={e=>{e.currentTarget.style.background=A.bg;e.currentTarget.style.borderColor=A.border;}}>
+                  <span style={{fontSize:14}}>{p.i}</span>
+                  <div><div style={{fontSize:9,color:A.text,fontWeight:600}}>{p.l}</div><div style={{fontSize:7,color:A.textMuted}}>{p.s}</div></div>
+                </div>
+              ))}
+              <div style={{padding:"9px",borderRadius:6,background:A.accentBg,border:`1px dashed ${A.accentLight}`,fontSize:8,color:A.textMuted,lineHeight:1.7,textAlign:"center",marginTop:6}}>
+                O describe el reporte<br/>en el chat IA 💬
+              </div>
             </div>
           )}
         </div>
+        ):(
+          <button onClick={()=>setLeftOpen(true)} title="Mostrar panel de herramientas"
+            style={{width:28,flexShrink:0,background:A.sidebar,borderRight:`1px solid ${A.border}`,
+              border:"none",borderRightColor:A.border,cursor:"pointer",color:A.accent,
+              display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6,
+              fontSize:13,transition:"all 0.15s"}}
+            onMouseEnter={e=>e.currentTarget.style.background=A.accentBg}
+            onMouseLeave={e=>e.currentTarget.style.background=A.sidebar}>
+            <span style={{fontSize:14}}>▶</span>
+            <span style={{writingMode:"vertical-rl",fontSize:9,fontWeight:600,letterSpacing:1,color:A.textMuted}}>HERRAMIENTAS</span>
+          </button>
+        )}
 
-        {/* CANVAS */}
-        <div style={{flex:1,overflow:"auto",background:showGrid?"repeating-linear-gradient(0deg,transparent,transparent 31px,rgba(0,0,0,0.05) 31px,rgba(0,0,0,0.05) 32px),repeating-linear-gradient(90deg,transparent,transparent 31px,rgba(0,0,0,0.05) 31px,rgba(0,0,0,0.05) 32px),#e2e8f0":"#e2e8f0"}} onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}} onDrop={handleDrop} onDragOver={e=>e.preventDefault()}>
-          <div style={{padding:40,minWidth:"100%",minHeight:"100%",display:"inline-block"}} onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}>
-            <div ref={canvasRef} style={{position:"relative",width:960,height:580,background:ct.canvas,borderRadius:12,boxShadow:"0 8px 40px rgba(0,0,0,0.16),0 0 0 1px rgba(0,0,0,0.05)",transform:`scale(${zoom})`,transformOrigin:"top left",marginRight:`${(zoom-1)*960}px`,marginBottom:`${(zoom-1)*580}px`}} onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}>
+        {/* ── CANVAS ── */}
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
+          {/* Banner de auto-ajuste al cambiar tamaño */}
+          {resizePrompt&&(
+            <div style={{padding:"10px 16px",background:"#fffbeb",borderBottom:"1px solid #fcd34d",
+              display:"flex",flexDirection:"column",gap:8,flexShrink:0,zIndex:50,position:"relative"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8,paddingRight:20}}>
+                <span style={{fontSize:14,flexShrink:0}}>📐</span>
+                <span style={{fontSize:10,color:"#92400e",lineHeight:1.5}}>
+                  Canvas cambió de {resizePrompt.oldW}×{resizePrompt.oldH} a {CW}×{CH}.
+                  {resizePrompt.hasOverflow?" Hay elementos fuera del lienzo.":""} ¿Cómo ajustar los elementos?
+                </span>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button type="button" onClick={scaleAllElements}
+                  style={{padding:"6px 14px",borderRadius:6,background:"#d97706",border:"none",
+                    color:"#fff",fontSize:9.5,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+                  ⤢ Escalar todo proporcionalmente
+                </button>
+                <button type="button" onClick={clampOverflowElements}
+                  style={{padding:"6px 14px",borderRadius:6,background:"#fff",border:"1px solid #d97706",
+                    color:"#92400e",fontSize:9.5,fontWeight:600,cursor:"pointer",flexShrink:0}}>
+                  ⊞ Solo ajustar desbordados
+                </button>
+              </div>
+              <button type="button" onClick={()=>setResizePrompt(null)}
+                style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:"#92400e",fontSize:15,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+            </div>
+          )}
+        <div
+          style={{flex:1,overflow:"auto",background:ct.wallpaperGradient
+            ?ct.wallpaperGradient
+            :(showGrid
+              ?`repeating-linear-gradient(0deg,transparent,transparent 31px,rgba(0,0,0,0.05) 31px,rgba(0,0,0,0.05) 32px),repeating-linear-gradient(90deg,transparent,transparent 31px,rgba(0,0,0,0.05) 31px,rgba(0,0,0,0.05) 32px),${ct.wallpaper||"#e2e8f0"}`
+              :(ct.wallpaper||"#e2e8f0"))}}
+          onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}
+          onDrop={handleDrop} onDragOver={e=>e.preventDefault()}>
+          <div style={{padding:40,minWidth:"100%",minHeight:"100%",display:"inline-block"}}
+            onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}>
+            <div ref={canvasRef}
+              style={{position:"relative",width:CW,height:CH+26,
+                background:ct.canvas,borderRadius:12,
+                boxShadow:"0 8px 40px rgba(0,0,0,0.16),0 0 0 1px rgba(0,0,0,0.05)",
+                transform:`scale(${zoom})`,transformOrigin:"top left",
+                marginRight:`${(zoom-1)*CW}px`,marginBottom:`${(zoom-1)*(CH+26)}px`}}
+              onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}>
+
+              {/* Titlebar decorativa */}
               <div style={{position:"absolute",top:0,left:0,right:0,height:26,background:"rgba(0,0,0,0.025)",borderBottom:`1px solid ${ct.cardBorder}`,borderRadius:"12px 12px 0 0",display:"flex",alignItems:"center",padding:"0 10px",gap:4,zIndex:0,pointerEvents:"none"}}>
                 {["#ef4444","#f59e0b","#10b981"].map((c,i)=><div key={i} style={{width:7,height:7,borderRadius:"50%",background:c,opacity:0.5}}/>)}
-                <span style={{fontSize:8,color:ct.textMuted,marginLeft:7,fontFamily:"monospace",opacity:0.6}}>960 × 580 px</span>
+                <span style={{fontSize:8,color:ct.textMuted,marginLeft:7,fontFamily:"monospace",opacity:0.6}}>{CW} × {CH} px</span>
                 <span style={{marginLeft:"auto",fontSize:8,color:ct.textMuted,fontFamily:"monospace",opacity:0.4}}>{ct.canvas} · {ct.accent}</span>
               </div>
-              <div style={{position:"absolute",inset:0,top:26}} onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}>
+
+              {/* Capa de elementos — DOS capas:
+                  1. clip-layer: overflow:hidden → los visuals nunca salen del canvas
+                  2. handles-layer: overflow:visible → los handles sí pueden sobresalir */}
+
+              {/* CLIP LAYER — recorta todo el contenido al área del canvas */}
+              <div style={{position:"absolute",left:0,right:0,top:26,height:CH,overflow:"hidden",borderRadius:"0 0 12px 12px"}}
+                onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}>
                 {els.length===0&&(
                   <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,pointerEvents:"none",opacity:0.35}}>
                     <div style={{fontSize:32,color:ct.textMuted}}>⬡</div>
                     <div style={{fontSize:11,color:ct.textSub,textAlign:"center",lineHeight:1.8,fontFamily:"'Segoe UI',sans-serif"}}>Describe tu reporte en el chat IA<br/>o arrastra elementos desde el panel izquierdo</div>
                   </div>
                 )}
+                {/* Visuals + drag/select — dentro del clip */}
                 {els.map(el=>(
-                  <CanvasEl key={el.id} el={el} ct={ct} selected={sel===el.id} zoom={zoom} snapGrid={snapGrid} onSelect={setSel} onUpdate={updateEl} onCommit={commitEl} navCfg={navCfg} hdrCfg={hdrCfg}/>
+                  <CanvasEl key={el.id} el={el} ct={ct} selected={sel===el.id}
+                    zoom={zoom} snapGrid={snapGrid} CW={CW} CH={CH}
+                    onSelect={setSel} onUpdate={updateEl} onCommit={commitEl}
+                    navCfg={navCfg} hdrCfg={hdrCfg}
+                    allEls={els} onGuides={setGuides}/>
+                ))}
+                {/* Líneas guía de alineación (solo durante drag) */}
+                {guides.map((g,i)=>(
+                  <div key={i} style={{position:"absolute",pointerEvents:"none",zIndex:300,
+                    background:g.kind==="center"?"#ec4899":"#2563eb",
+                    boxShadow:`0 0 0 0.5px ${g.kind==="center"?"#ec4899":"#2563eb"}`,
+                    ...(g.type==="v"
+                      ?{left:g.pos,top:0,width:1,height:CH}
+                      :{top:g.pos,left:0,height:1,width:CW})}}/>
                 ))}
               </div>
+
+              {/* HANDLES LAYER — overflow:visible, solo renderiza handles del elemento seleccionado */}
+              {sel&&(()=>{
+                const el=els.find(e=>e.id===sel);
+                if(!el)return null;
+                return(
+                  <div style={{position:"absolute",left:0,right:0,top:26,height:CH,overflow:"visible",pointerEvents:"none"}}>
+                    <HandleOverlay el={el} ct={ct} zoom={zoom} CW={CW} CH={CH} snapGrid={snapGrid}
+                      onResize={(id,patch)=>{updateEl(id,patch);}}
+                      onCommit={commitEl}/>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
+        </div>
 
-        {/* AI PANEL */}
-        {aiOpen && (
-          <div style={{ width: 292, background: A.sidebar, borderLeft: `1px solid ${A.border}`, display: "flex", flexDirection: "column", flexShrink: 0 }}>
-            <div style={{ padding: "9px 14px", borderBottom: `1px solid ${A.border}`, display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: loading ? "#f59e0b" : A.success, boxShadow: `0 0 5px ${loading ? "#f59e0b" : A.success}`, transition: "all 0.3s" }} />
-              <span style={{ fontSize: 11, fontWeight: 700, color: A.text }}>AI Design Assistant</span>
-              {loading && <span style={{ fontSize: 8, color: A.textMuted, marginLeft: "auto", fontFamily: "monospace", animation: "pulse 1s infinite" }}>generando…</span>}
+        {/* ── PANEL IA ── */}
+        {aiOpen&&(
+          <div style={{width:aiW,background:A.sidebar,borderLeft:`1px solid ${A.border}`,display:"flex",flexDirection:"column",flexShrink:0,position:"relative"}}>
+            {/* Handle de redimensión — borde izquierdo del panel IA */}
+            <div
+              onMouseDown={e=>{
+                e.preventDefault();
+                const sx=e.clientX, sw=aiW;
+                const mv=ev=>setAiW(Math.max(240,Math.min(520,sw-(ev.clientX-sx))));
+                const up=()=>{window.removeEventListener("mousemove",mv);window.removeEventListener("mouseup",up);};
+                window.addEventListener("mousemove",mv);window.addEventListener("mouseup",up);
+              }}
+              style={{position:"absolute",left:-3,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:60}}
+              title="Arrastra para ajustar el ancho"
+            />
+            <div style={{padding:"9px 14px",borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",gap:7,flexShrink:0}}>
+              <div style={{width:7,height:7,borderRadius:"50%",background:loading?"#f59e0b":A.success,boxShadow:`0 0 5px ${loading?"#f59e0b":A.success}`,transition:"all 0.3s"}}/>
+              <span style={{fontSize:11,fontWeight:700,color:A.text}}>AI Design Assistant</span>
+              {loading&&<span style={{fontSize:8,color:A.textMuted,marginLeft:"auto",fontFamily:"monospace",animation:"pulse 1s infinite"}}>generando…</span>}
             </div>
-            <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-              {msgs.map((m, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", alignItems: "flex-start", gap: 6 }}>
-                  {m.role === "ai" && <div style={{ width: 20, height: 20, borderRadius: "50%", background: A.accentBg, border: `1px solid ${A.accentLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, flexShrink: 0, marginTop: 2 }}>⬡</div>}
-                  <div style={{ maxWidth: "88%", padding: "8px 11px", borderRadius: m.role === "user" ? "10px 10px 3px 10px" : "3px 10px 10px 10px", background: m.role === "user" ? A.bubbleUser : A.bubbleAI, border: `1px solid ${m.role === "user" ? A.accentLight : A.border}`, fontSize: 10, color: A.text, lineHeight: 1.55, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-                    {m.atts?.length > 0 && (
-                      <div style={{ marginBottom: 5, display: "flex", flexWrap: "wrap", gap: 3 }}>
-                        {m.atts.map((a, ai) => (
-                          <span key={ai} style={{ fontSize: 8, padding: "2px 5px", background: A.accentBg, borderRadius: 4, color: A.accent, fontFamily: "monospace" }}>{fileIcon(a.name)} {a.name.slice(0, 16)}</span>
-                        ))}
-                      </div>
-                    )}
+            <div style={{flex:1,overflowY:"auto",padding:"10px 12px",display:"flex",flexDirection:"column",gap:6}}>
+              {msgs.map((m,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-start",gap:6}}>
+                  {m.role==="ai"&&<div style={{width:20,height:20,borderRadius:"50%",background:A.accentBg,border:`1px solid ${A.accentLight}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,flexShrink:0,marginTop:2}}>⬡</div>}
+                  <div style={{maxWidth:"88%",padding:"8px 11px",
+                    borderRadius:m.role==="user"?"10px 10px 3px 10px":"3px 10px 10px 10px",
+                    background:m.role==="user"?A.bubbleUser:A.bubbleAI,
+                    border:`1px solid ${m.role==="user"?A.accentLight:A.border}`,
+                    fontSize:10,color:A.text,lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>
+                    {m.atts?.length>0&&<div style={{marginBottom:5,display:"flex",flexWrap:"wrap",gap:3}}>{m.atts.map((a,ai)=><span key={ai} style={{fontSize:8,padding:"2px 5px",background:A.accentBg,borderRadius:4,color:A.accent,fontFamily:"monospace"}}>{fileIcon(a.name)} {a.name.slice(0,16)}</span>)}</div>}
                     {m.text}
                   </div>
                 </div>
               ))}
-              {loading && (
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
-                  <div style={{ width: 20, height: 20, borderRadius: "50%", background: A.accentBg, border: `1px solid ${A.accentLight}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, flexShrink: 0 }}>⬡</div>
-                  <div style={{ padding: "8px 14px", borderRadius: "3px 10px 10px 10px", background: A.bubbleAI, border: `1px solid ${A.border}`, fontSize: 13, color: A.textLight, letterSpacing: 4 }}>···</div>
+              {loading&&(
+                <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+                  <div style={{width:20,height:20,borderRadius:"50%",background:A.accentBg,border:`1px solid ${A.accentLight}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,flexShrink:0}}>⬡</div>
+                  <div style={{padding:"8px 14px",borderRadius:"3px 10px 10px 10px",background:A.bubbleAI,border:`1px solid ${A.border}`,fontSize:13,color:A.textLight,letterSpacing:4}}>···</div>
                 </div>
               )}
-              <div ref={chatEndRef} />
+              <div ref={chatEndRef}/>
             </div>
-            {/* Quick prompts */}
-            <div style={{ padding: "5px 10px", borderTop: `1px solid ${A.border}`, display: "flex", flexWrap: "wrap", gap: 3, flexShrink: 0 }}>
-              {["Dashboard ventas", "Header azul oscuro", "Tema oscuro verde", "Finanzas corporativo", "HR minimalista"].map(p => (
-                <button key={p} onClick={() => setInput(p)} style={{ fontSize: 8, padding: "3px 6px", background: A.bg, border: `1px solid ${A.border}`, color: A.textMuted, borderRadius: 4, cursor: "pointer", fontFamily: "monospace", transition: "all 0.12s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = A.accent; e.currentTarget.style.color = A.accent; }} onMouseLeave={e => { e.currentTarget.style.borderColor = A.border; e.currentTarget.style.color = A.textMuted; }}>{p}</button>
-              ))}
-            </div>
-            {/* Attachments */}
-            {atts.length > 0 && (
-              <div style={{ padding: "5px 10px", borderTop: `1px solid ${A.border}`, display: "flex", flexWrap: "wrap", gap: 3, flexShrink: 0 }}>
-                {atts.map((a, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, padding: "2px 7px", background: A.accentBg, borderRadius: 5, border: `1px solid ${A.accentLight}` }}>
-                    <span style={{ fontSize: 8, color: A.accent, fontFamily: "monospace" }}>{fileIcon(a.name)} {a.name.slice(0, 14)}</span>
-                    <span onClick={() => setAtts(a => a.filter((_, j) => j !== i))} style={{ fontSize: 11, color: A.danger, cursor: "pointer", lineHeight: 1 }}>×</span>
+            {/* Adjuntos */}
+            {atts.length>0&&(
+              <div style={{padding:"5px 10px",borderTop:`1px solid ${A.border}`,display:"flex",flexWrap:"wrap",gap:3,flexShrink:0}}>
+                {atts.map((a,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 7px",background:A.accentBg,borderRadius:5,border:`1px solid ${A.accentLight}`}}>
+                    <span style={{fontSize:8,color:A.accent,fontFamily:"monospace"}}>{fileIcon(a.name)} {a.name.slice(0,14)}</span>
+                    <span onClick={()=>setAtts(a=>a.filter((_,j)=>j!==i))} style={{fontSize:11,color:A.danger,cursor:"pointer",lineHeight:1}}>×</span>
                   </div>
                 ))}
               </div>
             )}
-            {/* Input area */}
-            <div style={{ padding: "9px 12px", borderTop: `1px solid ${A.border}`, flexShrink: 0 }}>
-              <button onClick={() => fileRef.current?.click()} style={{ ...B({ width: "100%", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "5px" }), transition: "all 0.12s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = A.accent; e.currentTarget.style.color = A.accent; e.currentTarget.style.background = A.accentBg; }} onMouseLeave={e => { e.currentTarget.style.borderColor = A.border2; e.currentTarget.style.color = A.textMuted; e.currentTarget.style.background = A.surface; }}>📎 Adjuntar archivo (imagen, JSON, PDF, Excel…)</button>
-              <input ref={fileRef} type="file" multiple accept="*/*" style={{ display: "none" }} onChange={e => { handleFiles(Array.from(e.target.files)); e.target.value = ""; }} />
-              <div style={{ display: "flex", gap: 5, alignItems: "flex-end" }}>
-                <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(); } }} onPaste={handlePaste} placeholder="Describe tu reporte, colores, layout… (Enter para enviar)" style={{ flex: 1, background: A.inputBg, border: `1px solid ${loading ? "#f59e0b" : A.border2}`, color: A.text, borderRadius: 7, padding: "7px 9px", fontSize: 10, resize: "none", outline: "none", height: 54, fontFamily: "'Segoe UI', sans-serif", transition: "border-color 0.2s", lineHeight: 1.5 }} />
-                <button onClick={sendMsg} disabled={loading || (!input.trim() && atts.length === 0)} style={{ width: 30, height: 30, borderRadius: 7, background: (loading || (!input.trim() && atts.length === 0)) ? A.border : A.accent, border: "none", color: (loading || (!input.trim() && atts.length === 0)) ? A.textLight : "#fff", cursor: "pointer", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, transition: "all 0.15s" }}>↑</button>
+            {/* Panel de resultado de auditoría */}
+            {auditResult&&(
+              <div style={{margin:"0 10px 6px",background:A.bg,border:`1px solid ${A.border}`,borderRadius:8,overflow:"hidden",flexShrink:0}}>
+                <div style={{padding:"7px 10px",background:A.accentBg,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:18,fontWeight:900,color:A.accent}}>{auditResult.grade}</span>
+                    <div>
+                      <div style={{fontSize:10,fontWeight:700,color:A.text}}>Auditoría de diseño</div>
+                      <div style={{fontSize:8.5,color:A.textMuted}}>{auditResult.summary}</div>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",border:`3px solid ${auditResult.score>=80?"#059669":auditResult.score>=60?"#f59e0b":"#dc2626"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:A.text}}>{auditResult.score}</div>
+                    <button onClick={()=>setAuditResult(null)} style={{background:"none",border:"none",cursor:"pointer",color:A.textMuted,fontSize:14}}>×</button>
+                  </div>
+                </div>
+                <div style={{maxHeight:160,overflowY:"auto",padding:"6px 10px"}}>
+                  {auditResult.issues?.map((issue,i)=>(
+                    <div key={i} style={{padding:"5px 0",borderBottom:`1px solid ${A.border}`,display:"flex",gap:6,alignItems:"flex-start"}}>
+                      <span style={{fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,flexShrink:0,
+                        background:issue.severity==="high"?"#fef2f2":issue.severity==="medium"?"#fffbeb":"#f0fdf4",
+                        color:issue.severity==="high"?"#dc2626":issue.severity==="medium"?"#d97706":"#059669"}}>
+                        {issue.severity==="high"?"●":issue.severity==="medium"?"◐":"○"}
+                      </span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:8.5,fontWeight:600,color:A.text}}>{issue.problem}</div>
+                        <div style={{fontSize:8,color:A.textMuted,marginTop:1}}>→ {issue.fix}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {auditResult.strengths?.length>0&&(
+                    <div style={{marginTop:6,padding:"4px 0"}}>
+                      <div style={{fontSize:7.5,color:A.textMuted,fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Puntos fuertes</div>
+                      {auditResult.strengths.map((s,i)=><div key={i} style={{fontSize:8,color:"#059669",marginBottom:1}}>✓ {s}</div>)}
+                    </div>
+                  )}
+                  {/* Botón para aplicar las mejoras recomendadas */}
+                  {auditResult.issues?.length>0&&(
+                    <button
+                      onClick={()=>{
+                        const issuesList=auditResult.issues.map(it=>typeof it==="string"?it:(it.text||it.issue||"")).filter(Boolean).join("; ");
+                        setAuditResult(null);
+                        setTimeout(()=>sendMsg({
+                          visible:"✨ Aplicar mejoras de la auditoría",
+                          prompt:`Reconstruye el diseño actual aplicando estas mejoras detectadas en la auditoría: ${issuesList}. Mantén los mismos elementos y datos, solo corrige la disposición, espaciado, jerarquía y proporciones según las recomendaciones. Usa mode:"update" para preservar los elementos existentes.`
+                        }),60);
+                      }}
+                      style={{width:"100%",marginTop:8,padding:"8px",borderRadius:7,border:"none",
+                        background:`linear-gradient(135deg,${A.accent},${adjHex(A.accent,0.8)})`,
+                        color:"#fff",fontSize:9.5,fontWeight:700,cursor:"pointer",
+                        display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                        boxShadow:`0 3px 10px ${rgba(A.accent,0.35)}`}}>
+                      ✨ Aplicar mejoras recomendadas
+                    </button>
+                  )}
+                  <div style={{fontSize:7,color:A.textLight,marginTop:6,textAlign:"center",lineHeight:1.5}}>
+                    La IA reconstruirá el diseño con las mejoras. Puedes deshacer con Ctrl+Z si no te convence.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Input */}
+            <div style={{padding:"9px 12px",borderTop:`1px solid ${A.border}`,flexShrink:0}}>
+              <div style={{display:"flex",gap:5,marginBottom:6}}>
+                <button onClick={()=>fileRef.current?.click()}
+                  style={{...B({flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"5px"}),transition:"all 0.12s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.color=A.textMuted;e.currentTarget.style.background=A.surface;}}>
+                  📎 Adjuntar archivo
+                </button>
+                <button title="Auditar diseño — detecta problemas de jerarquía, contraste y dataviz"
+                  onClick={()=>{
+                    if(els.length===0){return;}
+                    setTimeout(()=>sendMsg({
+                      visible:"🔍 Auditar diseño",
+                      prompt:"Audita el diseño actual: jerarquía visual, contraste, accesibilidad, espaciado y mejores prácticas de dataviz. Sé específico con cada problema encontrado."
+                    }),80);
+                  }}
+                  style={{...B({padding:"5px 10px",fontSize:13}),transition:"all 0.12s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.background=A.accentBg;}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.background=A.surface;}}>
+                  🔍
+                </button>
+                <button title="Cambiar a vista móvil"
+                  onClick={()=>{
+                    if(els.length===0&&!mobileEls){return;}
+                    switchToMobile();
+                  }}
+                  style={{...B({padding:"5px 10px",fontSize:13}),transition:"all 0.12s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.background=A.accentBg;}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.background=A.surface;}}>
+                  📱
+                </button>
+              </div>
+              <input ref={fileRef} type="file" multiple accept="*/*" style={{display:"none"}} onChange={e=>{handleFiles(Array.from(e.target.files));e.target.value="";}}/>
+              <div style={{display:"flex",gap:5,alignItems:"flex-end"}}>
+                <textarea value={input} onChange={e=>setInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}}}
+                  onPaste={handlePaste}
+                  placeholder="Describe tu reporte, colores, layout… (Enter para enviar)"
+                  style={{flex:1,background:A.inputBg,border:`1px solid ${loading?"#f59e0b":A.border2}`,color:A.text,borderRadius:7,padding:"7px 9px",fontSize:10,resize:"none",outline:"none",height:54,fontFamily:"'Segoe UI',sans-serif",transition:"border-color 0.2s",lineHeight:1.5}}/>
+                <button onClick={sendMsg} disabled={loading||(!input.trim()&&atts.length===0)}
+                  style={{width:30,height:30,borderRadius:7,background:(loading||(!input.trim()&&atts.length===0))?A.border:A.accent,border:"none",color:(loading||(!input.trim()&&atts.length===0))?A.textLight:"#fff",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>↑</button>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* STATUS BAR */}
-      <div style={{ height: 22, background: A.topbar, borderTop: `1px solid ${A.border}`, display: "flex", alignItems: "center", padding: "0 14px", gap: 14, flexShrink: 0 }}>
-        <span style={{ fontSize: 8, color: A.textLight, fontFamily: "monospace" }}>Canvas 960×580</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ fontSize: 8, color: A.textMuted, fontFamily: "monospace" }}>Canvas:</span>{[ct.canvas, ct.accent, ct.secondary, ct.cardBg].map((c, i) => <div key={i} title={c} onClick={() => navigator.clipboard?.writeText(c)} style={{ width: 12, height: 12, borderRadius: 2, background: c, border: `1px solid ${A.border2}`, cursor: "pointer" }} />)}</div>
-        <span style={{ fontSize: 8, color: snapGrid ? A.accent : A.textLight, fontFamily: "monospace" }}>{snapGrid ? "⊞ Snap" : "⊟ Snap"}</span>
-        {selEl && <span style={{ fontSize: 8, color: A.text, fontFamily: "monospace" }}>Sel: [{selEl.type}] x:{selEl.x} y:{selEl.y} {selEl.w}×{selEl.h}px</span>}
-        <span style={{ marginLeft: "auto", fontSize: 8, color: A.textLight, fontFamily: "monospace" }}>Del · Ctrl+Z · ↑↓←→</span>
+      {/* ══ STATUS BAR ══════════════════════════════════════════════ */}
+      <div style={{height:22,background:A.topbar,borderTop:`1px solid ${A.border}`,display:"flex",alignItems:"center",padding:"0 14px",gap:14,flexShrink:0}}>
+        <span style={{fontSize:8,color:A.textLight,fontFamily:"monospace"}}>Canvas {CW}×{CH}</span>
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <span style={{fontSize:8,color:A.textMuted,fontFamily:"monospace"}}>Canvas:</span>
+          {[ct.canvas,ct.accent,ct.secondary,ct.cardBg].map((c,i)=>
+            <div key={i} title={c} onClick={()=>navigator.clipboard?.writeText(c)} style={{width:12,height:12,borderRadius:2,background:c,border:`1px solid ${A.border2}`,cursor:"pointer"}}/>
+          )}
+        </div>
+        <span style={{fontSize:8,color:snapGrid?A.accent:A.textLight,fontFamily:"monospace"}}>{snapGrid?"⊞ Snap":"⊟ Snap"}</span>
+        {selEl&&<span style={{fontSize:8,color:A.text,fontFamily:"monospace"}}>Sel: [{selEl.type}] x:{selEl.x} y:{selEl.y} {selEl.w}×{selEl.h}px</span>}
+        <span style={{marginLeft:"auto",fontSize:8,color:A.textLight,fontFamily:"monospace"}}>Del · Ctrl+Z · ↑↓←→</span>
       </div>
 
-      {/* EXPORT MODAL */}
-      {exportModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-          <div style={{ background: A.surface, border: `1px solid ${A.border}`, borderRadius: 16, width: 620, maxHeight: "88vh", display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 40px 100px rgba(0,0,0,0.35)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "18px 24px 14px", borderBottom: `1px solid ${A.border}`, flexShrink: 0 }}>
-              <div><div style={{ fontSize: 15, fontWeight: 800, color: A.text }}>Exportar a Power BI</div><div style={{ fontSize: 9, color: A.textMuted, marginTop: 3 }}>Selecciona archivo · cópialo o genera el link de descarga directa</div></div>
-              <button type="button" onClick={() => setExportModal(false)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: A.textMuted, lineHeight: 1, padding: "4px 8px" }}>×</button>
+      {/* ══ EXPORT MODAL ════════════════════════════════════════════ */}
+      {exportModal&&(
+        <ExportModal
+          ct={ct}
+          els={viewMode==="mobile"?(desktopBackup.current||els):els}
+          mobileEls={viewMode==="mobile"?els:mobileEls}
+          navCfg={navCfg} hdrCfg={hdrCfg}
+          A={A}
+          CW={viewMode==="mobile"?(desktopSizeBackup.current?.cw||960):CW}
+          CH={viewMode==="mobile"?(desktopSizeBackup.current?.ch||580):CH}
+          onClose={()=>setExportModal(false)}
+        />
+      )}
+
+      {/* ══ THEME LIBRARY MODAL ═════════════════════════════════════ */}
+      {themeModal&&(
+        <ThemeLibraryModal
+          A={A} ct={ct} brandThemes={BRAND_THEMES} savedThemes={savedThemes}
+          onApply={(theme)=>{setCt({...CANVAS_DEFAULT,...theme.ct});setThemeModal(false);}}
+          onSave={saveCurrentTheme} onDelete={deleteTheme}
+          onClose={()=>setThemeModal(false)}
+        />
+      )}
+      {versionsModal&&(
+        <VersionsModal
+          A={A} savedDesigns={savedDesigns} currentCount={els.length}
+          onSave={saveDesign} onLoad={loadDesign} onDelete={deleteDesign}
+          onClose={()=>setVersionsModal(false)}
+        />
+      )}
+      {/* ══ CONFIRMAR NUEVO LIENZO ══════════════════════════════════ */}
+      {confirmNew&&(
+        <div onClick={()=>setConfirmNew(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:14,width:380,maxWidth:"92vw",padding:"22px",boxShadow:"0 30px 80px rgba(0,0,0,0.4)"}}>
+            <div style={{fontSize:15,fontWeight:700,color:A.text,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>📊 Nuevo lienzo</div>
+            <div style={{fontSize:11,color:A.textSub,lineHeight:1.6,marginBottom:18}}>
+              Se limpiarán los {els.length} elementos del canvas actual para empezar un dashboard nuevo. Podrás deshacerlo con Ctrl+Z.
             </div>
-            <div style={{ padding: "9px 24px", borderBottom: `1px solid ${A.border}`, display: "flex", alignItems: "center", gap: 9, background: A.accentBg, flexShrink: 0 }}>
-              <span style={{ fontSize: 8, color: A.textMuted, fontFamily: "monospace", flexShrink: 0 }}>CANVAS:</span>
-              {[ct.canvas, ct.accent, ct.accent2, ct.secondary, ct.cardBg, ct.cardBorder].filter(Boolean).map((c, i) => <div key={i} title={c} onClick={() => navigator.clipboard?.writeText(c)} style={{ width: 16, height: 16, borderRadius: 3, background: c, border: `1px solid ${A.border2}`, cursor: "pointer", flexShrink: 0 }} />)}
-              <span style={{ fontSize: 9, color: A.text, fontFamily: "monospace" }}>{ct.accent}</span>
-              <span style={{ marginLeft: "auto", fontSize: 9, color: A.textMuted }}>{els.length} elem · nav: {navCfg.position}</span>
-            </div>
-            <div style={{ display: "flex", padding: "12px 24px 0", gap: 4, flexShrink: 0 }}>
-              {[
-                { k: "theme", label: "pbi-theme.json", icon: "🎨" },
-                { k: "layout", label: "pbi-layout.json", icon: "📐" },
-                { k: "readme", label: "README.txt", icon: "📋" }
-              ].map(item => (
-                <button key={item.k} onClick={() => setExportActiveTab(item.k)} style={{ padding: "8px 14px", border: `1px solid ${exportActiveTab === item.k ? A.accentLight : A.border}`, borderBottom: exportActiveTab === item.k ? "none" : `1px solid ${A.border}`, borderRadius: "8px 8px 0 0", background: exportActiveTab === item.k ? A.bg : A.surface, color: exportActiveTab === item.k ? A.accent : A.textMuted, fontSize: 9, cursor: "pointer", fontFamily: "monospace", fontWeight: exportActiveTab === item.k ? 700 : 400, flexShrink: 0 }}>{item.icon} {item.label}</button>
-              ))}
-            </div>
-            <div style={{ margin: "0 24px", border: `1px solid ${A.accentLight}`, borderRadius: "0 10px 10px 10px", background: A.bg, display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" }}>
-              <div style={{ padding: "6px 14px", borderBottom: `1px solid ${A.border}`, fontSize: 8, color: A.textMuted, flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center" }}><span>{"Paso a paso"}</span><span style={{ fontFamily: "monospace", fontSize: 7, color: A.accentLight }}>{(getExportText().length / 1024).toFixed(1)} KB</span></div>
-              <textarea readOnly value={getExportText()} onClick={e => e.target.select()} style={{ flex: 1, background: "transparent", border: "none", color: A.text, padding: "10px 14px", fontSize: 9, fontFamily: "'Courier New', monospace", resize: "none", outline: "none", lineHeight: 1.65, minHeight: 180 }} />
-            </div>
-            <div style={{ padding: "12px 24px 10px", display: "flex", gap: 10, flexShrink: 0 }}>
-              <button type="button" onClick={() => copyToClipboard(getExportText())} style={{ flex: 1, padding: "11px", borderRadius: 9, background: A.surface, border: `1.5px solid ${A.border2}`, color: A.text, cursor: "pointer", fontSize: 10, fontWeight: 600, transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>📋 Copiar al portapapeles</button>
-              <button type="button" onClick={downloadAll} style={{ flex: 1, padding: "11px", borderRadius: 9, background: A.accent, border: "none", color: "#fff", cursor: "pointer", fontSize: 10, fontWeight: 700, transition: "all 0.2s", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, boxShadow: `0 4px 14px ${rgba(A.accent, 0.4)}` }}>⬇ Descargar todos los archivos</button>
-            </div>
-            <div style={{ padding: "0 24px 14px", flexShrink: 0 }}>
-              <div style={{ padding: "8px 14px", borderRadius: 7, background: A.accentBg, border: `1px solid ${A.accentLight}`, fontSize: 8, color: A.textMuted, lineHeight: 1.8, fontFamily: "'Segoe UI', sans-serif" }}><b style={{ color: A.accent }}>Pasos:</b> 1. Copia o descarga cada archivo. 2. En Power BI Desktop: Vista → Temas → Examinar temas → selecciona pbi-theme.json. 3. Ajusta el tamaño de página a 960×580 px. 4. Coloca cada visual según las coordenadas de pbi-layout.json.</div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>setConfirmNew(false)}
+                style={{padding:"8px 16px",borderRadius:8,background:A.bg,border:`1px solid ${A.border2}`,color:A.textSub,fontSize:11,fontWeight:600,cursor:"pointer"}}>
+                Cancelar
+              </button>
+              <button onClick={()=>{
+                setEls([]);pushHistory([]);setSel(null);setConfirmNew(false);
+                // Resetear a estado por defecto: tamaño 960×580, tema limpio, nav default
+                suppressResize.current=true;
+                setCanvasSize(CANVAS_SIZES[0]);
+                setCt({...CANVAS_DEFAULT});
+                setNavCfg({...NAV_DEFAULT,pages:NAV_DEFAULT.pages.map(p=>({...p}))});
+                setHdrCfg({show:false,title:"My Report",subtitle:"Business Intelligence Dashboard",height:58,bgColor:""});
+                setMsgs(m=>[...m,{role:"ai",text:"🆕 Lienzo limpio y restablecido a 960×580. Listo para un nuevo dashboard — descríbeme qué necesitas."}]);
+              }}
+                style={{padding:"8px 16px",borderRadius:8,background:A.accent,border:"none",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                Sí, limpiar lienzo
+              </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Versions Modal (proyectos guardados) ─────────────────────────
+function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClose}){
+  const[name,setName]=useState("");
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:660,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
+        <div style={{padding:"14px 20px",borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:A.text}}>📂 Mis diseños</div>
+            <div style={{fontSize:9,color:A.textMuted,marginTop:1}}>Guarda el diseño actual y vuelve a él cuando quieras (incluye desktop + móvil)</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:A.textMuted,fontSize:18}}>×</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+          <div style={{display:"flex",gap:8,marginBottom:18,padding:"10px",background:A.accentBg,borderRadius:10}}>
+            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Nombre del diseño actual…"
+              style={{flex:1,background:A.surface,border:`1px solid ${A.border2}`,color:A.text,borderRadius:7,padding:"7px 10px",fontSize:10,outline:"none"}}/>
+            <button onClick={()=>{if(currentCount===0)return;onSave(name);setName("");}}
+              disabled={currentCount===0}
+              style={{background:currentCount===0?A.border:A.accent,color:currentCount===0?A.textLight:"#fff",border:"none",borderRadius:7,padding:"7px 16px",fontSize:10,fontWeight:600,cursor:currentCount===0?"default":"pointer",whiteSpace:"nowrap"}}>
+              💾 Guardar diseño actual
+            </button>
+          </div>
+          {savedDesigns.length===0
+            ?<div style={{textAlign:"center",padding:"30px 10px",color:A.textLight,fontSize:10}}>Aún no tienes diseños guardados.<br/>Crea un dashboard y guárdalo aquí.</div>
+            :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:10}}>
+              {savedDesigns.map(d=>(
+                <div key={d.id} style={{borderRadius:10,border:`1px solid ${A.border}`,background:A.bg,overflow:"hidden",cursor:"pointer",transition:"all 0.15s"}}
+                  onClick={()=>onLoad(d)}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 18px rgba(0,0,0,0.12)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border;e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                  <div style={{height:40,background:d.ct?.wallpaper||A.accentBg,padding:6,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <div style={{fontSize:8,fontFamily:"monospace",color:d.ct?.accent||A.accent,fontWeight:700}}>{d.count} elem{d.mobileEls?" · 📱":""}</div>
+                    <button onClick={e=>{e.stopPropagation();onDelete(d.id);}}
+                      style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(220,38,38,0.9)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                  </div>
+                  <div style={{padding:"7px 9px"}}>
+                    <div style={{fontSize:10,fontWeight:600,color:A.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</div>
+                    <div style={{fontSize:8,color:A.textMuted,marginTop:1}}>{d.date}</div>
+                  </div>
+                </div>
+              ))}
+            </div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Theme Library Modal ───────────────────────────────────────────
+function ThemeLibraryModal({A,ct,brandThemes,savedThemes,onApply,onSave,onDelete,onClose}){
+  const[newName,setNewName]=useState("");
+  const ThemeCard=({theme,deletable})=>(
+    <div style={{borderRadius:10,border:`1px solid ${A.border}`,overflow:"hidden",background:A.bg,cursor:"pointer",transition:"all 0.15s"}}
+      onClick={()=>onApply(theme)}
+      onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 18px rgba(0,0,0,0.12)";}}
+      onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border;e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+      {/* Swatch preview */}
+      <div style={{height:54,background:theme.ct.wallpaper,padding:8,position:"relative"}}>
+        <div style={{height:"100%",background:theme.ct.canvas,borderRadius:6,border:`1px solid ${theme.ct.cardBorder}`,display:"flex",alignItems:"center",padding:"0 8px",gap:5}}>
+          <div style={{width:18,height:18,borderRadius:4,background:theme.ct.accent}}/>
+          <div style={{flex:1,height:7,borderRadius:3,background:theme.ct.secondary}}/>
+          <div style={{width:10,height:10,borderRadius:2,background:theme.ct.accent2}}/>
+        </div>
+        {deletable&&(
+          <button onClick={e=>{e.stopPropagation();onDelete(theme.id);}}
+            style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(220,38,38,0.9)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        )}
+      </div>
+      <div style={{padding:"7px 9px",display:"flex",alignItems:"center",gap:6}}>
+        <span style={{fontSize:14}}>{theme.emoji}</span>
+        <span style={{fontSize:10,fontWeight:600,color:A.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{theme.name}</span>
+      </div>
+    </div>
+  );
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:660,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
+        <div style={{padding:"14px 20px",borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:14,fontWeight:700,color:A.text}}>🎨 Biblioteca de temas</div>
+            <div style={{fontSize:9,color:A.textMuted,marginTop:1}}>Aplica una paleta de marca al diseño actual (solo cambia colores, no el layout)</div>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:A.textMuted,fontSize:18}}>×</button>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+          {/* Guardar tema actual */}
+          <div style={{display:"flex",gap:8,marginBottom:18,padding:"10px",background:A.accentBg,borderRadius:10}}>
+            <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nombre del tema actual…"
+              style={{flex:1,background:A.surface,border:`1px solid ${A.border2}`,color:A.text,borderRadius:7,padding:"7px 10px",fontSize:10,outline:"none"}}/>
+            <button onClick={()=>{onSave(newName);setNewName("");}}
+              style={{background:A.accent,color:"#fff",border:"none",borderRadius:7,padding:"7px 16px",fontSize:10,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+              💾 Guardar tema actual
+            </button>
+          </div>
+          {savedThemes.length>0&&<>
+            <div style={{fontSize:9,fontWeight:700,color:A.textMuted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Mis temas guardados</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:18}}>
+              {savedThemes.map(t=><ThemeCard key={t.id} theme={t} deletable/>)}
+            </div>
+          </>}
+          <div style={{fontSize:9,fontWeight:700,color:A.textMuted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Temas de marca</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10}}>
+            {brandThemes.map(t=><ThemeCard key={t.id} theme={t}/>)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Nav Builder Panel ─────────────────────────────────────────────
+function NavBuilderPanel({nav:rawNav,setNav,activeTab,setActiveTab,A,IS,LS,ct}){
+  // Normaliza el nav para que SIEMPRE tenga pages y colors (evita crashes)
+  const nav={...NAV_DEFAULT,...rawNav,
+    colors:{...NAV_DEFAULT.colors,...(rawNav?.colors||{})},
+    pages:(rawNav?.pages&&rawNav.pages.length)?rawNav.pages:NAV_DEFAULT.pages};
+  const upd=patch=>setNav(n=>({...n,...patch}));
+  const updColor=patch=>setNav(n=>({...n,colors:{...NAV_DEFAULT.colors,...(n.colors||{}),...patch}}));
+  const acc=A.accent,acBg=A.accentBg,acL=A.accentLight;
+  const[iconPicker,setIconPicker]=useState(null); // índice de página con picker abierto
+
+  // Preview del nav
+  const actIdx=(()=>{const i=nav.pages.findIndex(p=>p.active);return i>=0?i:0;})();
+  const NavPreview=({collapsed})=>(
+    <div style={{background:nav.colors.bg,borderRadius:6,overflow:"hidden",
+      width:collapsed?nav.widthCollapsed:nav.width,
+      maxHeight:240,flexShrink:0,transition:"width 0.3s",display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"10px 8px",borderBottom:"1px solid rgba(255,255,255,0.08)",
+        display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+        {nav.logoUrl
+          ?<img src={directImageUrl(nav.logoUrl)} alt="" style={{width:20,height:20,borderRadius:4,objectFit:"contain",flexShrink:0}} onError={e=>{e.currentTarget.style.display="none";}}/>
+          :<div style={{width:20,height:20,borderRadius:4,background:nav.colors.accent,
+            flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:10,color:"#fff"}}>⬡</div>}
+        {!collapsed&&<div style={{fontSize:9,fontWeight:700,color:nav.colors.textActive,
+          overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{nav.reportName||"Mi Reporte"}</div>}
+      </div>
+      <div style={{padding:"4px 0",overflow:"auto"}}>
+        {nav.pages.map((p,i)=>(
+          <div key={p.id??i} style={{display:"flex",alignItems:"center",gap:6,
+            padding:"6px 8px",margin:"1px 4px",borderRadius:4,
+            background:i===actIdx?`rgba(${hexToRgb(nav.colors.selected)},${nav.colors.selectedOpacity/100})`:"transparent",
+            color:i===actIdx?nav.colors.textActive:nav.colors.textInactive,
+            fontWeight:i===actIdx?600:400}}>
+            <span style={{fontSize:11,flexShrink:0}}>{p.icon}</span>
+            {!collapsed&&<span style={{fontSize:8,overflow:"hidden",textOverflow:"ellipsis",
+              whiteSpace:"nowrap"}}>{p.label}</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:0}}>
+      {/* Tabs del nav builder */}
+      <div style={{display:"flex",gap:2,marginBottom:8}}>
+        {[["config","⚙ Config"],["preview","👁 Preview"],["code","💻 Código"]].map(([t,l])=>(
+          <button key={t} type="button" onClick={()=>setActiveTab(t)}
+            style={{flex:1,padding:"5px 2px",fontSize:7,fontWeight:activeTab===t?700:400,
+              background:activeTab===t?acBg:A.bg,color:activeTab===t?acc:A.textMuted,
+              border:`1px solid ${activeTab===t?acL:A.border}`,borderRadius:5,cursor:"pointer"}}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {activeTab==="config"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {/* Posición y estilo */}
+          <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${A.border}`}}>
+            <div style={{fontSize:8,color:acc,fontFamily:"monospace",marginBottom:6,fontWeight:700}}>POSICIÓN & ESTILO</div>
+            <label style={LS}>Posición</label>
+            <select value={nav.position} onChange={e=>upd({position:e.target.value})} style={{...IS,marginBottom:6}}>
+              <option value="left">Izquierda</option>
+              <option value="right">Derecha</option>
+              <option value="top">Superior</option>
+              <option value="none">Ninguno</option>
+            </select>
+            <label style={LS}>Estilo</label>
+            <select value={nav.style} onChange={e=>upd({style:e.target.value})} style={{...IS,marginBottom:6}}>
+              <option value="static">Estático</option>
+              <option value="collapsible">Colapsable</option>
+              <option value="floating">Flotante</option>
+            </select>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+              <div>
+                <label style={LS}>Ancho expandido</label>
+                <input type="number" value={nav.width} onChange={e=>upd({width:+e.target.value})} style={IS}/>
+              </div>
+              <div>
+                <label style={LS}>Ancho colapsado</label>
+                <input type="number" value={nav.widthCollapsed} onChange={e=>upd({widthCollapsed:+e.target.value})} style={IS}/>
+              </div>
+            </div>
+          </div>
+
+          {/* Identidad */}
+          <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${A.border}`}}>
+            <div style={{fontSize:8,color:acc,fontFamily:"monospace",marginBottom:6,fontWeight:700}}>IDENTIDAD</div>
+            <label style={LS}>Nombre del reporte</label>
+            <input value={nav.reportName} onChange={e=>upd({reportName:e.target.value})} style={{...IS,marginBottom:5}}/>
+            <label style={LS}>URL del logo (opcional)</label>
+            <input value={nav.logoUrl} onChange={e=>upd({logoUrl:e.target.value})}
+              onBlur={e=>{const d=directImageUrl(e.target.value);if(d!==e.target.value)upd({logoUrl:d});}}
+              placeholder="https://..." style={IS}/>
+            <div style={{fontSize:6.5,color:A.textLight,marginTop:3,lineHeight:1.5}}>
+              Soporta links de Dropbox, Google Drive, OneDrive e Imgur — se convierten automáticamente
+            </div>
+          </div>
+
+          {/* Colores */}
+          <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${A.border}`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <div style={{fontSize:8,color:acc,fontFamily:"monospace",fontWeight:700}}>COLORES</div>
+              <button type="button" onClick={()=>updColor({bgCustom:false,selectedCustom:false})}
+                title="Usar los colores del tema del diseño"
+                style={{fontSize:7,padding:"2px 6px",borderRadius:4,border:`1px solid ${A.border2}`,background:A.surface,color:A.textMuted,cursor:"pointer"}}>
+                ↺ Tema
+              </button>
+            </div>
+            {[
+              ["Fondo sidebar","bg"],["Acento","accent"],
+              ["Texto activo","textActive"],["Texto inactivo","textInactive"],
+            ].map(([l,k])=>(
+              <div key={k} style={{display:"flex",alignItems:"center",gap:6,marginBottom:5}}>
+                <input type="color" value={nav.colors[k]} onChange={e=>{
+                  const patch={[k]:e.target.value};
+                  if(k==="bg")patch.bgCustom=true;
+                  if(k==="accent"||k==="selected")patch.selectedCustom=true;
+                  updColor(patch);
+                }}
+                  style={{width:24,height:20,padding:0,border:`1px solid ${A.border2}`,borderRadius:4,cursor:"pointer"}}/>
+                <span style={{fontSize:8,color:A.textMuted,flex:1}}>{l}</span>
+                <span style={{fontSize:7,fontFamily:"monospace",color:A.textLight}}>{nav.colors[k]}</span>
+              </div>
+            ))}
+            {/* Hover con opacidad — layout 2 líneas para no desbordar */}
+            <div style={{marginTop:4,padding:"6px",background:A.surface,borderRadius:4,border:`1px solid ${A.border}`}}>
+              <div style={{fontSize:7,color:A.textMuted,marginBottom:5}}>HOVER / PRESS / SELECTED</div>
+              {[["Hover","hover","hoverOpacity"],["Selected","selected","selectedOpacity"]].map(([l,ck,ok])=>(
+                <div key={l} style={{marginBottom:6}}>
+                  {/* Línea 1: color + label + valor */}
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:3}}>
+                    <input type="color" value={nav.colors[ck]} onChange={e=>updColor({[ck]:e.target.value})}
+                      style={{width:18,height:16,padding:0,border:`1px solid ${A.border2}`,borderRadius:3,cursor:"pointer",flexShrink:0}}/>
+                    <span style={{fontSize:7,color:A.textMuted,flex:1}}>{l}</span>
+                    <span style={{fontSize:7,fontFamily:"monospace",color:A.textLight,flexShrink:0}}>{nav.colors[ok]}%</span>
+                  </div>
+                  {/* Línea 2: slider de ancho completo */}
+                  <input type="range" min="0" max="100" value={nav.colors[ok]}
+                    onChange={e=>updColor({[ok]:+e.target.value})}
+                    style={{width:"100%",accentColor:acc,display:"block"}}/>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Páginas */}
+          <div style={{padding:"8px",background:A.bg,borderRadius:6,border:`1px solid ${A.border}`}}>
+            <div style={{fontSize:8,color:acc,fontFamily:"monospace",marginBottom:6,fontWeight:700}}>PÁGINAS</div>
+            {nav.pages.map((p,i)=>(
+              <div key={p.id} style={{display:"flex",gap:4,alignItems:"center",marginBottom:4}}>
+                <button type="button" title={p.active?"Página activa":"Marcar como activa"}
+                  onClick={()=>setNav(n=>({...n,pages:n.pages.map((x,j)=>({...x,active:j===i}))}))}
+                  style={{background:"none",border:"none",cursor:"pointer",fontSize:11,padding:"0 1px",flexShrink:0,
+                    color:p.active?acc:A.textLight,opacity:p.active?1:0.4}}>{p.active?"★":"☆"}</button>
+                <div style={{position:"relative",flexShrink:0}}>
+                  <button type="button" onClick={()=>setIconPicker(iconPicker===i?null:i)}
+                    title="Elegir icono"
+                    style={{...IS,width:30,textAlign:"center",padding:"3px",cursor:"pointer",
+                      background:iconPicker===i?acBg:A.surface,borderColor:iconPicker===i?acc:A.border2}}>
+                    {p.icon}
+                  </button>
+                  {iconPicker===i&&(
+                    <div style={{position:"absolute",top:"110%",left:0,zIndex:200,
+                      width:208,padding:6,background:A.surface,border:`1px solid ${acc}`,
+                      borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",
+                      display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:2,
+                      maxHeight:160,overflowY:"auto"}}>
+                      {NAV_ICONS.map(ic=>(
+                        <button key={ic} type="button"
+                          onClick={()=>{setNav(n=>({...n,pages:n.pages.map((x,j)=>j===i?{...x,icon:ic}:x)}));setIconPicker(null);}}
+                          style={{border:"none",background:p.icon===ic?acBg:"transparent",
+                            borderRadius:4,cursor:"pointer",fontSize:14,padding:"3px 0",
+                            transition:"background 0.1s"}}
+                          onMouseEnter={e=>e.currentTarget.style.background=acBg}
+                          onMouseLeave={e=>e.currentTarget.style.background=p.icon===ic?acBg:"transparent"}>
+                          {ic}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <input value={p.label} onChange={e=>setNav(n=>({...n,pages:n.pages.map((x,j)=>j===i?{...x,label:e.target.value}:x)}))}
+                  style={{...IS,flex:1,padding:"3px 6px"}}/>
+                <button type="button" onClick={()=>setNav(n=>{
+                  const filtered=n.pages.filter((_,j)=>j!==i);
+                  // si borramos la activa, activar la primera
+                  if(p.active&&filtered.length&&!filtered.some(x=>x.active))filtered[0]={...filtered[0],active:true};
+                  return{...n,pages:filtered};
+                })}
+                  style={{background:"none",border:"none",color:A.danger,cursor:"pointer",fontSize:12,padding:"0 2px",flexShrink:0}}>×</button>
+              </div>
+            ))}
+            <button type="button"
+              onClick={()=>setNav(n=>({...n,pages:[...n.pages,{id:Date.now(),label:"Nueva página",icon:"📄"}]}))}
+              style={{width:"100%",padding:"5px",borderRadius:5,background:acBg,border:`1px dashed ${acL}`,
+                color:acc,fontSize:8,cursor:"pointer",marginTop:2}}>+ Agregar página</button>
+          </div>
+        </div>
+      )}
+
+      {activeTab==="preview"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{fontSize:8,color:A.textMuted,textAlign:"center"}}>Expandido</div>
+          <div style={{display:"flex",justifyContent:"center"}}><NavPreview collapsed={false}/></div>
+          {nav.style==="collapsible"&&<>
+            <div style={{fontSize:8,color:A.textMuted,textAlign:"center",marginTop:4}}>Colapsado</div>
+            <div style={{display:"flex",justifyContent:"center"}}><NavPreview collapsed={true}/></div>
+          </>}
+        </div>
+      )}
+
+      {activeTab==="code"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{fontSize:8,color:A.textMuted,lineHeight:1.6}}>
+            Copia el código HTML y pégalo en el visual <b style={{color:acc}}>HTML Content</b> de Power BI.
+          </div>
+          <textarea readOnly
+            value={generateNavHTML(nav,ct)}
+            onClick={e=>e.target.select()}
+            style={{...IS,height:130,resize:"none",lineHeight:1.4,fontSize:7,fontFamily:"monospace"}}/>
+          <div style={{fontSize:8,color:A.textMuted,lineHeight:1.6,marginTop:4}}>
+            Medida <b style={{color:acc}}>DAX</b> para navegación dinámica:
+          </div>
+          <textarea readOnly
+            value={generateNavDAX(nav)}
+            onClick={e=>e.target.select()}
+            style={{...IS,height:110,resize:"none",lineHeight:1.4,fontSize:7,fontFamily:"monospace"}}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── PBIT EXPORT — genera Power BI Template (.pbit) real ──────────
+// Un .pbit es un ZIP con archivos internos codificados en UTF-16LE.
+// Generamos el ZIP a mano (método STORED, sin compresión) — cero dependencias.
+
+const _crcTable=(()=>{const t=[];for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0;}return t;})();
+function _crc32(buf){let c=0xFFFFFFFF;for(let i=0;i<buf.length;i++)c=_crcTable[(c^buf[i])&0xFF]^(c>>>8);return(c^0xFFFFFFFF)>>>0;}
+// UTF-16LE SIN BOM — confirmado por stack trace real de PBI Desktop:
+// PowerBIPackager.ValidateVersion lee los bytes con Encoding.Unicode sin
+// quitar BOM, así que '\uFEFF1.28' es rechazado como versión inválida.
+function _utf16le(str){
+  const b=new Uint8Array(str.length*2);
+  for(let i=0;i<str.length;i++){const c=str.charCodeAt(i);b[i*2]=c&0xFF;b[i*2+1]=c>>8;}
+  return b;
+}
+function _utf8(str){return new TextEncoder().encode(str);}
+
+function _buildZip(entries){
+  const chunks=[],central=[];let offset=0;
+  // Fecha DOS válida (2026-01-01 00:00) — fecha 0 (mes 0/día 0) es inválida
+  // y el lector ZIP de .NET puede rechazarla
+  const DOS_TIME=0x0000,DOS_DATE=((2026-1980)<<9)|(1<<5)|1;
+  for(const e of entries){
+    const nameB=_utf8(e.name),crc=_crc32(e.data);
+    const local=new Uint8Array(30+nameB.length);
+    const dv=new DataView(local.buffer);
+    dv.setUint32(0,0x04034b50,true);dv.setUint16(4,20,true);
+    dv.setUint16(8,0,true); // método STORED
+    dv.setUint16(10,DOS_TIME,true);dv.setUint16(12,DOS_DATE,true);
+    dv.setUint32(14,crc,true);
+    dv.setUint32(18,e.data.length,true);dv.setUint32(22,e.data.length,true);
+    dv.setUint16(26,nameB.length,true);
+    local.set(nameB,30);
+    chunks.push(local,e.data);
+    const cen=new Uint8Array(46+nameB.length);
+    const cv=new DataView(cen.buffer);
+    cv.setUint32(0,0x02014b50,true);cv.setUint16(4,20,true);cv.setUint16(6,20,true);
+    cv.setUint16(12,DOS_TIME,true);cv.setUint16(14,DOS_DATE,true);
+    cv.setUint32(16,crc,true);
+    cv.setUint32(20,e.data.length,true);cv.setUint32(24,e.data.length,true);
+    cv.setUint16(28,nameB.length,true);
+    cv.setUint32(42,offset,true);
+    cen.set(nameB,46);
+    central.push(cen);
+    offset+=local.length+e.data.length;
+  }
+  const cenSize=central.reduce((s,c)=>s+c.length,0);
+  const eocd=new Uint8Array(22);
+  const ev=new DataView(eocd.buffer);
+  ev.setUint32(0,0x06054b50,true);
+  ev.setUint16(8,entries.length,true);ev.setUint16(10,entries.length,true);
+  ev.setUint32(12,cenSize,true);ev.setUint32(16,offset,true);
+  const out=new Uint8Array(offset+cenSize+22);
+  let p=0;
+  for(const c of chunks){out.set(c,p);p+=c.length;}
+  for(const c of central){out.set(c,p);p+=c.length;}
+  out.set(eocd,p);
+  return out;
+}
+
+// Mapeo de nuestros tipos → tipos de visual reales de Power BI
+const PBIT_VISUAL_MAP={
+  kpi:"card", kpispark:"card", bar:"clusteredBarChart", line:"lineChart", pie:"donutChart",
+  gauge:"gauge", scatter:"scatterChart", treemap:"treemap", matrix:"pivotTable",
+  table:"tableEx", slicer:"slicer", button:"actionButton",
+  nav:"shape", card:"shape", header:"shape", image:"image",
+};
+
+// ═══ ESTRUCTURA VERIFICADA contra pbit REAL (FlowViz, diseccionado byte a byte) ═══
+// Version="1.30" · Settings con QueriesSettings · Metadata Version:5 (PascalCase)
+// Content_Types UTF-8 CON BOM · resto UTF-16LE SIN BOM · baseTheme CY18SU04
+function buildPbit(els,ct,CW,CH,mobileEls){
+  const esc=s=>String(s||"").replace(/'/g,"").replace(/"/g,"");
+  const rid=()=>Math.floor(Math.random()*900000000)+100000000; // ids numéricos como el real
+  const hexname=()=>Array.from({length:20},()=>"0123456789abcdef"[Math.floor(Math.random()*16)]).join("");
+
+  // Mapear elementos móviles por id para emparejarlos con los desktop
+  const mobileById={};
+  if(mobileEls&&mobileEls.length)mobileEls.forEach(m=>{mobileById[m.id]=m;});
+
+  const visualContainers=els.map((e,i)=>{
+    const vt=PBIT_VISUAL_MAP[e.type]||"textbox";
+    const name=hexname();
+    // layouts: id=0 es el de escritorio; id=1 es el móvil (Power BI Mobile)
+    const layouts=[{id:0,position:{x:e.x,y:e.y,z:i,width:e.w,height:e.h,tabOrder:(i+1)*1000}}];
+    const m=mobileById[e.id];
+    if(m){
+      layouts.push({id:1,position:{x:m.x,y:m.y,z:i,width:m.w,height:m.h,tabOrder:(i+1)*1000},
+        // displayState visible en móvil
+        parentGroupName:null});
+    }
+    const cfg={
+      name,
+      layouts,
+      singleVisual:{
+        visualType:vt,
+        drillFilterOtherVisuals:true,
+        vcObjects:{title:[{properties:{
+          show:{expr:{Literal:{Value:"true"}}},
+          text:{expr:{Literal:{Value:`'${esc(e.label||e.type)}'`}}},
+          fontFamily:{expr:{Literal:{Value:"'Segoe UI Semibold'"}}},
+          fontSize:{expr:{Literal:{Value:"11D"}}},
+          fontColor:{solid:{color:{expr:{Literal:{Value:`'${ct.text||"#1e293b"}'`}}}}},
+          alignment:{expr:{Literal:{Value:"'left'"}}},
+          background:{solid:{color:{expr:{Literal:{Value:`'${ct.cardBg||"#ffffff"}'`}}}}},
+        }}]},
+      },
+    };
+
+    // Aplicar colores del tema directamente a cada visual (para que no salgan en gris)
+    const C=hex=>({solid:{color:{expr:{Literal:{Value:`'${hex}'`}}}}});
+    const accentHex=ct.accent||"#2563eb";
+    const headerBgHex=ct.headerBg||ct.accent||"#2563eb";
+    const cardBgHex=ct.cardBg||"#ffffff";
+
+    if(e.type==="header"){
+      // Header: fondo con color del header + título blanco
+      cfg.singleVisual.objects={
+        rectangle:[{properties:{fillColor:[C(headerBgHex)]}}],
+      };
+      cfg.singleVisual.vcObjects={
+        background:[{properties:{color:C(headerBgHex),show:{expr:{Literal:{Value:"true"}}}}}],
+      };
+    }else if(e.type==="nav"){
+      // Nav: fondo con tono del tema
+      const navBg=ct.headerBg||ct.accent2||"#1e293b";
+      cfg.singleVisual.vcObjects={
+        background:[{properties:{color:C(navBg),show:{expr:{Literal:{Value:"true"}}}}}],
+      };
+    }else if(["bar","line","pie","gauge","scatter","treemap","matrix","kpispark"].includes(e.type)){
+      // Charts: color de datos = acento del tema
+      cfg.singleVisual.objects={
+        dataPoint:[{properties:{defaultColor:C(accentHex),fill:C(accentHex)}}],
+      };
+      cfg.singleVisual.vcObjects=cfg.singleVisual.vcObjects||{};
+      cfg.singleVisual.vcObjects.background=[{properties:{color:C(cardBgHex),show:{expr:{Literal:{Value:"true"}}}}}];
+    }else if(e.type==="kpi"||e.type==="card"){
+      // KPI/Card: valor en color de acento, fondo de tarjeta
+      cfg.singleVisual.objects={
+        labels:[{properties:{color:C(accentHex)}}],
+      };
+      cfg.singleVisual.vcObjects=cfg.singleVisual.vcObjects||{};
+      cfg.singleVisual.vcObjects.background=[{properties:{color:C(cardBgHex),show:{expr:{Literal:{Value:"true"}}}}}];
+    }
+
+    return{id:rid(),x:e.x,y:e.y,z:i,width:e.w,height:e.h,
+      config:JSON.stringify(cfg),filters:"[]",tabOrder:(i+1)*1000};
+  });
+
+  // Fondo de página + papel tapiz (formato estándar de objects de página)
+  const sectionConfig=JSON.stringify({
+    objects:{
+      background:[{properties:{color:{solid:{color:{expr:{Literal:{Value:`'${ct.canvas||"#ffffff"}'`}}}}},transparency:{expr:{Literal:{Value:"0D"}}}}}],
+      outspace:[{properties:{color:{solid:{color:{expr:{Literal:{Value:`'${ct.wallpaper||"#e8edf2"}'`}}}}},transparency:{expr:{Literal:{Value:"0D"}}}}}],
+    },
+  });
+
+  // Tema personalizado embebido — para que el .pbit traiga los colores aplicados
+  // sin importar el theme.json aparte. Se registra como recurso y se referencia.
+  const customTheme=buildThemeJson(ct);
+  const themeName=customTheme.name||"PBI Designer";
+
+  // Layout — top-level real: id, filters, sections, config, layoutOptimization
+  const layout={
+    id:rid(),
+    filters:"[]",
+    // resourcePackages: registra el tema custom como recurso del reporte
+    resourcePackages:[
+      {resourcePackage:{name:"SharedResources",type:2,items:[
+        {type:202,path:"BaseThemes/CY18SU04.json",name:"CY18SU04"},
+      ],disabled:false}},
+      {resourcePackage:{name:"RegisteredResources",type:1,items:[
+        {type:202,path:"CustomTheme.json",name:themeName},
+      ],disabled:false}},
+    ],
+    sections:[{
+      id:rid(),
+      name:"ReportSection"+hexname(),
+      displayName:"Página 1",
+      filters:"[]",ordinal:0,
+      visualContainers,
+      config:sectionConfig,
+      displayOption:1,width:CW,height:CH,
+    }],
+    config:JSON.stringify({
+      version:"5.66",
+      themeCollection:{
+        baseTheme:{name:"CY18SU04",type:2,version:{visual:"1.8.26",report:"2.0.26",page:"1.3.26"}},
+        customTheme:{name:themeName,type:1,version:""},
+      },
+      activeSectionIndex:0,
+      defaultDrillFilterOtherVisuals:true,
+    }),
+    layoutOptimization:0,
+  };
+
+  // DataModelSchema real: name=GUID, compatibilityLevel 1567, dataAccessOptions
+  const guid=()=>"xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{
+    const r=Math.random()*16|0;return(c==="x"?r:(r&0x3|0x8)).toString(16);});
+
+  // Tabla de medidas placeholder: una medida DAX por cada KPI del canvas,
+  // lista para que el usuario reemplace el "0" por su cálculo real.
+  const kpiEls=els.filter(e=>e.type==="kpi");
+  const measures=kpiEls.map(e=>{
+    const cleanName=String(e.label||"Medida").replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ ]/g,"").trim()||"Medida";
+    return{
+      name:cleanName,
+      expression:"0 // TODO: reemplaza con tu cálculo, ej: SUM('Tabla'[Columna])",
+      formatString:"#,0",
+      annotations:[{name:"PBIDesigner_Source",value:"KPI placeholder"}],
+    };
+  });
+  const measuresTable=measures.length?[{
+    name:"_Medidas",
+    isHidden:false,
+    columns:[{name:"_dummy",dataType:"int64",isHidden:true,
+      sourceColumn:"_dummy",annotations:[{name:"SummarizationSetBy",value:"Automatic"}]}],
+    partitions:[{name:"_Medidas",mode:"import",
+      source:{type:"calculated",expression:"{0}"}}],
+    measures,
+    annotations:[{name:"PBI_Id",value:guid()}],
+  }]:[];
+
+  const dataModel={
+    name:guid(),
+    compatibilityLevel:1567,
+    model:{
+      culture:"es-PE",
+      dataAccessOptions:{legacyRedirects:true,returnErrorValuesAsNull:true},
+      defaultPowerBIDataSourceVersion:"powerBI_V3",
+      sourceQueryCulture:"es-PE",
+      tables:measuresTable,
+      annotations:[{name:"__PBI_TimeIntelligenceEnabled",value:"1"}],
+    },
+  };
+
+  // Settings y Metadata — copiados del pbit real (PascalCase, Version 1 y 5)
+  const settings={Version:1,ReportSettings:{},
+    QueriesSettings:{TypeDetectionEnabled:true,RelationshipImportEnabled:true,Version:"2.82.5858.641"}};
+  const metadata={Version:5,AutoCreatedRelationships:[],
+    FileDescription:"Plantilla generada con PBI Designer v2.0"};
+
+  return _buildZip([
+    // [Content_Types].xml en UTF-8 CON BOM (\uFEFF → EF BB BF) como el real
+    {name:"[Content_Types].xml",data:_utf8('\uFEFF<?xml version="1.0" encoding="utf-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="json" ContentType="" /><Override PartName="/Version" ContentType="" /><Override PartName="/DataModelSchema" ContentType="" /><Override PartName="/DiagramLayout" ContentType="" /><Override PartName="/Report/Layout" ContentType="" /><Override PartName="/Report/CustomTheme.json" ContentType="" /><Override PartName="/Settings" ContentType="application/json" /><Override PartName="/Metadata" ContentType="application/json" /></Types>')},
+    {name:"Version",data:_utf16le("1.30")},
+    {name:"Settings",data:_utf16le(JSON.stringify(settings))},
+    {name:"Metadata",data:_utf16le(JSON.stringify(metadata))},
+    {name:"DiagramLayout",data:_utf16le(JSON.stringify({version:"1.1.0",diagrams:[]}))},
+    {name:"Report/Layout",data:_utf16le(JSON.stringify(layout))},
+    // Tema custom embebido — Power BI lo aplica al abrir la plantilla
+    {name:"Report/CustomTheme.json",data:_utf16le(JSON.stringify(customTheme))},
+    {name:"DataModelSchema",data:_utf16le(JSON.stringify(dataModel))},
+  ]);
+}
+
+// ── Export Modal ─────────────────────────────────────────────────
+// Usa URL.createObjectURL — Blob URL funciona dentro del iframe
+// El usuario hace clic directamente en el <a> — no hay a.click() programático
+function ExportModal({ct,els,navCfg,hdrCfg,A,onClose,CW=960,CH=580,mobileEls=null}){
+  const[activeTab,setActiveTab]=useState("theme");
+  const[copied,setCopied]=useState(false);
+  const[blobUrl,setBlobUrl]=useState(null);
+  const[blobName,setBlobName]=useState("");
+  const[lang,setLang]=useState("es"); // idioma del export: es | en
+  const[selected,setSelected]=useState({}); // {key:true} para descarga múltiple
+  const[zipUrl,setZipUrl]=useState(null); // url del ZIP generado
+  const T=(es,en)=>lang==="es"?es:en;
+
+  const files={
+    pbit:  {label:"report.pbit",    mime:"application/octet-stream", icon:"📦", binary:true,
+            hint:T("📦 Plantilla Power BI — ábrela directo en PBI Desktop con los visuals ya posicionados","📦 Power BI template — open directly in PBI Desktop with visuals already placed"),
+            content:()=>T(`📦 PLANTILLA POWER BI (.pbit)
+
+Este archivo es una plantilla real de Power BI que contiene:
+
+  ✓ Página configurada a ${CW}×${CH}px
+  ✓ ${els.length} visuals posicionados exactamente como en tu canvas:
+${els.map(e=>`     [${(PBIT_VISUAL_MAP[e.type]||"textbox").padEnd(18)}] "${e.label}" → x:${e.x} y:${e.y} ${e.w}×${e.h}`).join("\n")}
+  ✓ Fondo del lienzo: ${ct.canvas}
+  ✓ Papel tapiz: ${ct.wallpaper||"#e8edf2"}
+  ✓ Título visible en cada visual
+${mobileEls&&mobileEls.length?`  ✓ 📱 VISTA MÓVIL INCLUIDA (${mobileEls.length} visuals) — embebida en el mismo archivo.`:`  ⚠ Sin vista móvil — genera el diseño móvil (botón 📱) antes de exportar.`}
+
+CÓMO USARLO:
+  1. Genera el link de descarga abajo
+  2. Abre report.pbit con Power BI Desktop (doble clic)
+  3. Conecta tus datos y arrastra los campos a cada visual
+  4. La vista móvil ya viene dentro — ábrela en Power BI Mobile`,
+`📦 POWER BI TEMPLATE (.pbit)
+
+This is a real Power BI template containing:
+
+  ✓ Page set to ${CW}×${CH}px
+  ✓ ${els.length} visuals positioned exactly as in your canvas:
+${els.map(e=>`     [${(PBIT_VISUAL_MAP[e.type]||"textbox").padEnd(18)}] "${e.label}" → x:${e.x} y:${e.y} ${e.w}×${e.h}`).join("\n")}
+  ✓ Canvas background: ${ct.canvas}
+  ✓ Wallpaper: ${ct.wallpaper||"#e8edf2"}
+  ✓ Title visible on each visual
+${mobileEls&&mobileEls.length?`  ✓ 📱 MOBILE VIEW INCLUDED (${mobileEls.length} visuals) — embedded in the same file.`:`  ⚠ No mobile view — generate the mobile layout (📱 button) before exporting.`}
+
+HOW TO USE:
+  1. Generate the download link below
+  2. Open report.pbit with Power BI Desktop (double-click)
+  3. Connect your data and drag fields onto each visual
+  4. The mobile view is already inside — open it in Power BI Mobile`)},
+    theme: {label:"pbi-theme.json", mime:"application/json", icon:"🎨",
+            hint:"Power BI → View → Themes → Browse for themes",
+            content:()=>JSON.stringify(buildThemeJson(ct),null,2)},
+    layout:{label:"pbi-layout.json",mime:"application/json", icon:"📐",
+            hint:`Posiciones exactas de cada visual (${CW}×${CH}px) — úsalo como referencia manual`,
+            content:()=>JSON.stringify(buildLayoutJson(els,ct,navCfg,hdrCfg,CW,CH),null,2)},
+    htmlnav:{label:"nav-menu.html", mime:"text/html",         icon:"☰",
+            hint:"Pega este código en el visual HTML Content de Power BI",
+            content:()=>generateNavHTML(navCfg,ct)},
+    htmlhdr:{label:"header.html",   mime:"text/html",         icon:"▭",
+            hint:"Barra superior del reporte — pégala en otro visual HTML Content",
+            content:()=>generateHeaderHTML(hdrCfg,ct,navCfg)},
+    daxnav:{label:"nav-medida.dax", mime:"text/plain",        icon:"⚡",
+            hint:"Medida DAX para navegación dinámica — reemplaza en tu modelo",
+            content:()=>generateNavDAX(navCfg)},
+    readme:{label:"README.txt",     mime:"text/plain",        icon:"📋",
+            hint:"Instrucciones paso a paso para recrear en Power BI Desktop",
+            content:()=>buildReadme(els,ct,navCfg,CW,CH)},
+  };
+
+  useEffect(()=>{
+    if(blobUrl){URL.revokeObjectURL(blobUrl);}
+    setBlobUrl(null);setBlobName("");
+  },[activeTab]);
+
+  const cur=files[activeTab];
+  const text=cur.content();
+  const acc=A.accent,acBg=A.accentBg,acL=A.accentLight;
+  const GREEN="#16a34a";
+
+  const copyText=()=>{
+    navigator.clipboard.writeText(text)
+      .then(()=>{setCopied(true);setTimeout(()=>setCopied(false),2400);})
+      .catch(()=>{
+        const el=document.createElement("textarea");
+        el.value=text;document.body.appendChild(el);el.select();
+        document.execCommand("copy");document.body.removeChild(el);
+        setCopied(true);setTimeout(()=>setCopied(false),2400);
+      });
+  };
+
+  const generateBlob=()=>{
+    if(blobUrl) URL.revokeObjectURL(blobUrl);
+    const blob=cur.binary
+      ?new Blob([buildPbit(els,ct,CW,CH,mobileEls)],{type:cur.mime})
+      :new Blob([text],{type:cur.mime});
+    setBlobUrl(URL.createObjectURL(blob));
+    setBlobName(cur.label);
+  };
+
+  // Construye el contenido binario de un archivo dado su key
+  const fileBytes=(key)=>{
+    const f=files[key];
+    if(f.binary)return buildPbit(els,ct,CW,CH,mobileEls);
+    return _utf8(f.content());
+  };
+
+  // Descarga múltiple: empaqueta los seleccionados en un ZIP
+  const downloadSelected=()=>{
+    const keys=Object.keys(selected).filter(k=>selected[k]);
+    if(keys.length===0)return;
+    if(keys.length===1){
+      // Un solo archivo → descarga directa (sin ZIP)
+      const f=files[keys[0]];
+      const data=fileBytes(keys[0]);
+      const blob=new Blob([data],{type:f.mime});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;a.download=f.label;
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+      return;
+    }
+    // Varios → ZIP
+    const entries=keys.map(k=>({name:files[k].label,data:fileBytes(k)}));
+    const zip=_buildZip(entries);
+    if(zipUrl)URL.revokeObjectURL(zipUrl);
+    const blob=new Blob([zip],{type:"application/zip"});
+    const url=URL.createObjectURL(blob);
+    setZipUrl(url);
+    const a=document.createElement("a");a.href=url;a.download="pbi-designer-export.zip";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+  };
+
+  const selectedCount=Object.keys(selected).filter(k=>selected[k]).length;
+  const allKeys=Object.keys(files);
+  const allSelected=selectedCount===allKeys.length;
+  const toggleAll=()=>{
+    if(allSelected)setSelected({});
+    else setSelected(Object.fromEntries(allKeys.map(k=>[k,true])));
+  };
+
+  const ready=blobUrl&&blobName===cur.label;
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",
+      display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999}}>
+      <div style={{background:A.surface,border:`1px solid ${A.border}`,
+        borderRadius:16,width:720,maxWidth:"94vw",maxHeight:"88vh",display:"flex",
+        flexDirection:"column",overflow:"hidden",
+        boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
+
+        {/* HEADER */}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
+          padding:"18px 24px 14px",borderBottom:`1px solid ${A.border}`,flexShrink:0}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:800,color:A.text}}>{T("Exportar a Power BI","Export to Power BI")}</div>
+            <div style={{fontSize:9,color:A.textMuted,marginTop:3}}>
+              {T("Selecciona archivo · cópialo o genera el link de descarga directa","Pick a file · copy it or generate the direct download link")}
+            </div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {/* Selector de idioma del export */}
+            <div style={{display:"flex",background:A.bg,borderRadius:6,padding:2,border:`1px solid ${A.border2}`}}>
+              {[["es","ES"],["en","EN"]].map(([code,lbl])=>(
+                <button key={code} onClick={()=>setLang(code)}
+                  style={{padding:"3px 9px",borderRadius:4,border:"none",cursor:"pointer",fontSize:9,fontWeight:lang===code?700:400,
+                    background:lang===code?A.accent:"transparent",color:lang===code?"#fff":A.textMuted}}>{lbl}</button>
+              ))}
+            </div>
+            <button type="button" onClick={onClose}
+              style={{background:"none",border:"none",fontSize:22,cursor:"pointer",
+                color:A.textMuted,lineHeight:1,padding:"4px 8px"}}>×</button>
+          </div>
+        </div>
+
+        {/* PALETA CANVAS */}
+        <div style={{padding:"9px 24px",borderBottom:`1px solid ${A.border}`,
+          display:"flex",alignItems:"center",gap:9,background:acBg,flexShrink:0}}>
+          <span style={{fontSize:8,color:A.textMuted,fontFamily:"monospace",flexShrink:0}}>CANVAS:</span>
+          {[ct.canvas,ct.accent,ct.accent2,ct.secondary,ct.cardBg,ct.cardBorder]
+            .filter(Boolean).map((c,i)=>(
+            <div key={i} title={c} onClick={()=>navigator.clipboard?.writeText(c)}
+              style={{width:16,height:16,borderRadius:3,background:c,
+                border:`1px solid ${A.border2}`,cursor:"pointer",flexShrink:0}}/>
+          ))}
+          <span style={{fontSize:9,color:A.text,fontFamily:"monospace"}}>{ct.accent}</span>
+          <span style={{marginLeft:"auto",fontSize:9,color:A.textMuted}}>
+            {els.length} elem · nav: {navCfg.position}
+          </span>
+        </div>
+
+        {/* TABS — con wrap + checkbox de selección para descarga múltiple */}
+        <div style={{display:"flex",flexWrap:"wrap",padding:"12px 24px 8px",gap:5,flexShrink:0,alignItems:"center"}}>
+          {Object.entries(files).map(([k,f])=>{
+            const sel=!!selected[k];
+            return(
+              <div key={k} style={{display:"flex",alignItems:"center",
+                border:`1.5px solid ${activeTab===k?acc:sel?GREEN:A.border}`,
+                borderRadius:8,background:activeTab===k?acBg:sel?"rgba(22,163,74,0.06)":A.surface,
+                overflow:"hidden",transition:"all 0.15s"}}>
+                <button type="button" onClick={()=>setSelected(s=>({...s,[k]:!s[k]}))}
+                  title={sel?"Quitar de la selección":"Agregar a la selección"}
+                  style={{padding:"7px 4px 7px 9px",border:"none",background:"transparent",
+                    cursor:"pointer",fontSize:11,lineHeight:1,color:sel?GREEN:A.textLight,display:"flex",alignItems:"center"}}>
+                  {sel?"☑":"☐"}
+                </button>
+                <button type="button" onClick={()=>setActiveTab(k)}
+                  style={{padding:"7px 12px 7px 4px",border:"none",background:"transparent",
+                    color:activeTab===k?acc:A.textMuted,fontSize:9,cursor:"pointer",
+                    fontFamily:"monospace",fontWeight:activeTab===k?700:400,
+                    transition:"all 0.15s"}}>
+                  {f.icon} {f.label}
+                </button>
+              </div>
+            );
+          })}
+          {/* Seleccionar todo */}
+          <button type="button" onClick={toggleAll}
+            style={{padding:"6px 11px",borderRadius:8,border:`1.5px dashed ${A.border2}`,
+              background:"transparent",color:A.textMuted,fontSize:8.5,cursor:"pointer",
+              fontWeight:600,marginLeft:"auto"}}>
+            {allSelected?"☒ Ninguno":"☑ Todos"}
+          </button>
+        </div>
+
+        {/* BARRA DE DESCARGA MÚLTIPLE */}
+        {selectedCount>0&&(
+          <div style={{margin:"0 24px 4px",padding:"8px 14px",borderRadius:9,
+            background:"rgba(22,163,74,0.08)",border:`1px solid ${rgba(GREEN,0.3)}`,
+            display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            <span style={{fontSize:9,color:"#166534",fontWeight:600,flex:1}}>
+              {selectedCount===1
+                ?T(`1 archivo seleccionado`,`1 file selected`)
+                :T(`${selectedCount} archivos seleccionados`,`${selectedCount} files selected`)}
+              {selectedCount>1&&T(" — se descargan juntos en un ZIP"," — downloaded together as a ZIP")}
+            </span>
+            <button type="button" onClick={()=>setSelected({})}
+              style={{padding:"5px 10px",borderRadius:6,border:`1px solid ${A.border2}`,
+                background:A.surface,color:A.textMuted,fontSize:8.5,cursor:"pointer",fontWeight:600}}>
+              {T("Limpiar","Clear")}
+            </button>
+            <button type="button" onClick={downloadSelected}
+              style={{padding:"6px 16px",borderRadius:7,border:"none",
+                background:"#16a34a",color:"#fff",fontSize:9.5,fontWeight:700,cursor:"pointer",
+                display:"flex",alignItems:"center",gap:6,
+                boxShadow:"0 3px 10px rgba(22,163,74,0.4)"}}>
+              ↓ {selectedCount>1?T(`Descargar ${selectedCount} (ZIP)`,`Download ${selectedCount} (ZIP)`):T("Descargar","Download")}
+            </button>
+          </div>
+        )}
+
+        {/* CONTENIDO */}
+        <div style={{margin:"0 24px",border:`1px solid ${acL}`,
+          borderRadius:10,background:A.bg,
+          display:"flex",flexDirection:"column",flex:1,minHeight:0,overflow:"hidden"}}>
+          <div style={{padding:"6px 14px",borderBottom:`1px solid ${A.border}`,
+            fontSize:8,color:A.textMuted,flexShrink:0,
+            display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <span>{cur.hint}</span>
+            <span style={{fontFamily:"monospace",fontSize:7,color:acL}}>
+              {(text.length/1024).toFixed(1)} KB
+            </span>
+          </div>
+          <textarea readOnly value={text} onClick={e=>e.target.select()}
+            style={{flex:1,background:"transparent",border:"none",color:A.text,
+              padding:"10px 14px",fontSize:9,fontFamily:"'Courier New',monospace",
+              resize:"none",outline:"none",lineHeight:1.65,minHeight:180}}/>
+        </div>
+
+        {/* LINK GENERADO — aparece tras hacer clic en Generar */}
+        {ready&&(
+          <div style={{margin:"10px 24px 0",padding:"11px 16px",borderRadius:10,
+            background:"#f0fdf4",border:"1.5px solid #86efac",
+            display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+            <span style={{fontSize:18,flexShrink:0}}>✅</span>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#166534"}}>
+                Archivo listo — haz clic en el botón para descargarlo
+              </div>
+              <div style={{fontSize:8,color:"#15803d",marginTop:2,fontFamily:"monospace"}}>
+                {blobName} · {(text.length/1024).toFixed(1)} KB
+              </div>
+            </div>
+            <a href={blobUrl} download={blobName}
+              style={{display:"inline-flex",alignItems:"center",gap:7,
+                padding:"10px 20px",borderRadius:9,
+                background:"#16a34a",color:"#fff",fontSize:11,fontWeight:700,
+                textDecoration:"none",flexShrink:0,
+                boxShadow:"0 4px 12px rgba(22,163,74,0.45)"}}>
+              ↓ Descargar {blobName}
+            </a>
+          </div>
+        )}
+
+        {/* BOTONES */}
+        <div style={{padding:"12px 24px 10px",display:"flex",gap:10,flexShrink:0}}>
+          <button type="button" onClick={cur.binary?undefined:copyText} disabled={cur.binary}
+            style={{flex:1,padding:"11px",borderRadius:9,
+              background:copied?"#059669":A.surface,
+              border:`1.5px solid ${copied?"#059669":A.border2}`,
+              color:cur.binary?A.textLight:copied?"#fff":A.text,
+              cursor:cur.binary?"not-allowed":"pointer",fontSize:10,fontWeight:600,
+              opacity:cur.binary?0.5:1,
+              transition:"all 0.2s",display:"flex",alignItems:"center",
+              justifyContent:"center",gap:6}}>
+            {cur.binary?"📦 Archivo binario — solo descarga":copied?"✓ ¡Copiado!":"📋 Copiar al portapapeles"}
+          </button>
+          <button type="button" onClick={generateBlob}
+            style={{flex:1,padding:"11px",borderRadius:9,
+              background:ready?"#15803d":acc,
+              border:"none",color:"#fff",cursor:"pointer",
+              fontSize:10,fontWeight:700,transition:"all 0.2s",
+              display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+              boxShadow:ready?"none":`0 4px 14px rgba(37,99,235,0.4)`}}>
+            {ready?"✓ Ver link arriba ↑":"⬇ Generar link de descarga"}
+          </button>
+        </div>
+
+        {/* INSTRUCCIÓN */}
+        <div style={{padding:"0 24px 14px",flexShrink:0}}>
+          <div style={{padding:"8px 14px",borderRadius:7,background:acBg,
+            border:`1px solid ${acL}`,fontSize:8,color:A.textMuted,
+            lineHeight:1.8,fontFamily:"'Segoe UI',sans-serif"}}>
+            <b style={{color:acc}}>Pasos:</b>
+            {" "}1. Clic en <b>⬇ Generar link</b>
+            {" "}→ 2. Aparece botón verde arriba
+            {" "}→ 3. Clic en <b>↓ Descargar</b>
+            {" "}| Alternativa: <b>Copiar</b> → pega en Notepad → guarda como <code>{cur.label}</code>
+          </div>
+        </div>
+
+      </div>
     </div>
   );
 }
