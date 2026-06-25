@@ -3,11 +3,11 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 const supabase = require('./supabase');
 const jwt = require('jsonwebtoken');
 
 const authMiddleware = require('./middleware/auth');
-console.log('✅ authMiddleware tipo:', typeof authMiddleware);
 
 const authRoutes = require('./routes/auth');
 
@@ -18,8 +18,49 @@ const PORT = process.env.PORT || 3001;
 app.use(cors({ origin: 'http://localhost:5173' }));
 app.use(express.json({ limit: '10mb' }));
 
+// -------------------------------------------------------------------
+// RATE LIMITING
+// -------------------------------------------------------------------
+// Límite general: 200 req/15 min por IP (protege contra scraping/bots)
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes. Espera unos minutos e intenta de nuevo.' },
+});
+app.use(generalLimiter);
+
+// Límite estricto para endpoints de IA: 12 req/min por IP
+// (Gemini free tier: 15 RPM — dejamos margen de 3 para latencia)
+const aiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 12,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Límite de IA alcanzado (12 por minuto). Espera un momento.' },
+  handler: (req, res, next, options) => {
+    const retryAfter = Math.ceil(options.windowMs / 1000);
+    res.setHeader('Retry-After', retryAfter);
+    res.status(429).json({
+      error: options.message.error,
+      retryAfter,
+      limit: options.max,
+    });
+  },
+});
+
+// Límite para auth: 10 intentos/15 min (protege contra brute force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de autenticación. Espera 15 minutos.' },
+});
+
 // Rutas de autenticación
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
 
 // -------------------------------------------------------------------
 // Prompt del sistema (definido ANTES de usarlo)
@@ -52,6 +93,29 @@ app.post('/api/auth/simple-login', (req, res) => {
     token,
     user: { id: userId, email: 'dev@example.com', credits: 100000 }
   });
+});
+
+// -------------------------------------------------------------------
+// Endpoint de desarrollo: recargar créditos (solo dev/local)
+// -------------------------------------------------------------------
+app.post('/api/dev/add-credits', (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'Not found' });
+  next();
+}, async (req, res) => {
+  const DEV_USER_ID = '93fa7701-f2cd-4eb3-ae8a-3a174f3cbbe2';
+  const amount = req.body?.amount || 500000;
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({ credits: amount })
+      .eq('id', DEV_USER_ID)
+      .select('id, credits')
+      .single();
+    if (error) throw error;
+    res.json({ success: true, credits: data.credits, message: `Créditos recargados a ${data.credits}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // -------------------------------------------------------------------
@@ -133,9 +197,17 @@ function normalizeLayout(layout) {
 // -------------------------------------------------------------------
 // ENDPOINT: Generar diseños con IA (PROTEGIDO)
 // -------------------------------------------------------------------
-app.post('/api/generate', authMiddleware, async (req, res) => {
+app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
   const { messages, system } = req.body;
   const userId = req.user.id;
+
+  // Validar estructura del body antes de procesar
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: 'El campo "messages" debe ser un array no vacío.' });
+  }
+  if (messages.length > 30) {
+    return res.status(400).json({ error: 'Demasiados mensajes en la conversación (máx. 30).' });
+  }
 
   try {
     // 1. Verificar créditos suficientes
@@ -156,27 +228,37 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
     console.log('📤 Enviando a Gemini...');
     console.log('System prompt usado:', effectiveSystem.substring(0, 200));
 
-    // 3. Llamar a Gemini 2.5 Flash
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GEMINI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gemini-2.5-flash',
-        messages: groqMessages,
-        temperature: 1,
-        max_tokens: 4000
-      })
-    });
+    // 3. Llamar a Gemini — con fallback automático si el modelo principal falla
+    const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-    const data = await response.json();
+    let response, data, usedModel;
+    for (const model of GEMINI_MODELS) {
+      console.log(`📤 Intentando con modelo: ${model}`);
+      response = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
+        body: JSON.stringify({ model, messages: groqMessages, temperature: 1, max_tokens: 4000 })
+      });
+      data = await response.json();
+      const geminiErr = Array.isArray(data) ? data[0]?.error : data?.error;
+      if (response.ok) { usedModel = model; break; }
+      if (geminiErr?.code === 503 || geminiErr?.status === 'UNAVAILABLE' || response.status === 503) {
+        console.warn(`⚠️ ${model} no disponible (503), probando siguiente modelo...`);
+        continue; // probar el siguiente
+      }
+      if (response.status === 429) {
+        return res.status(429).json({ error: '⏳ Límite de Gemini alcanzado. Espera 1 minuto e intenta de nuevo.', retryAfter: 60, limit: 15 });
+      }
+      // Otro error no recuperable
+      console.error('❌ Error Gemini inesperado:', data);
+      throw new Error(geminiErr?.message || `Error Gemini HTTP ${response.status}`);
+    }
 
     if (!response.ok) {
-      console.error('❌ Error Gemini:', data);
-      throw new Error(data.error?.message || 'Error en el servicio Gemini');
+      return res.status(503).json({ error: '⏳ Todos los modelos de Gemini están con alta demanda. Espera unos segundos e intenta de nuevo.' });
     }
+    console.log(`✅ Usando modelo: ${usedModel}`);
 
     // 4. Extraer texto de la respuesta
     const rawText = data.choices[0].message.content;
@@ -213,24 +295,47 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
     let layout = null;
     let cleanText = rawText;
 
+    // Sanitiza un string JSON: reemplaza saltos de línea/tab literales dentro
+    // de valores string por sus secuencias de escape válidas en JSON.
+    // Gemini suele meter \n literales en strings, lo que rompe JSON.parse.
+    function sanitizeJson(str) {
+      // Reemplaza newlines y tabs literales en una sola pasada eficiente
+      return str.replace(/\r\n|\r|\n|\t/g, m =>
+        m === '\t' ? '\\t' : '\\n'
+      );
+    }
+
     // Intento 1: buscar etiqueta <LAYOUT>
     const layoutMatch = rawText.match(/<LAYOUT>([\s\S]*?)<\/LAYOUT>/);
     if (layoutMatch) {
-      const jsonStr = layoutMatch[1].trim();
+      // Siempre quitar el bloque <LAYOUT> del texto visible, aunque falle el parse
+      cleanText = rawText.replace(/<LAYOUT>[\s\S]*?<\/LAYOUT>/, '').trim();
+      const jsonStr = sanitizeJson(layoutMatch[1].trim());
       try {
         layout = JSON.parse(jsonStr);
-        cleanText = rawText.replace(/<LAYOUT>[\s\S]*?<\/LAYOUT>/, '').trim();
         console.log('✅ Layout extraído mediante <LAYOUT>');
       } catch (e) {
         console.error('❌ Error parseando JSON dentro de <LAYOUT>:', e.message);
+        // Intento de reparación: recortar al último } balanceado
+        let cut = jsonStr.lastIndexOf('}');
+        let attempts = 0;
+        while (cut > 0 && attempts < 30) {
+          const frag = jsonStr.slice(0, cut + 1);
+          const oB = (frag.match(/{/g)||[]).length - (frag.match(/}/g)||[]).length;
+          const oA = (frag.match(/\[/g)||[]).length - (frag.match(/]/g)||[]).length;
+          const repaired = frag + ']'.repeat(Math.max(0,oA)) + '}'.repeat(Math.max(0,oB));
+          try { layout = JSON.parse(repaired); console.log('✅ Layout reparado'); break; } catch(e2){}
+          cut = jsonStr.lastIndexOf('}', cut - 1);
+          attempts++;
+        }
       }
     } else {
-      // Intento 2: intentar parsear todo el texto como JSON (válido)
-      const trimmed = rawText.trim();
+      // Intento 2: intentar parsear todo el texto como JSON directo
+      const trimmed = sanitizeJson(rawText.trim());
       if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
         try {
           layout = JSON.parse(trimmed);
-          cleanText = ''; // el texto completo era el layout
+          cleanText = '';
           console.log('✅ Layout extraído como JSON directo');
         } catch (e) {
           console.error('❌ Error parseando JSON directo:', e.message);
@@ -263,46 +368,44 @@ app.post('/api/generate', authMiddleware, async (req, res) => {
 // -------------------------------------------------------------------
 // ENDPOINT: Sugerencias de mejora (PROTEGIDO)
 // -------------------------------------------------------------------
-app.post('/api/suggest', authMiddleware, async (req, res) => {
+app.post('/api/suggest', aiLimiter, authMiddleware, async (req, res) => {
   const { design, theme } = req.body;
+
+  if (!design || !Array.isArray(design.elements)) {
+    return res.status(400).json({ error: 'Se requiere "design.elements" como array.' });
+  }
 
   try {
     const prompt = `Como experto en diseño de dashboards de Power BI, analiza este layout y sugiere 3-5 mejoras específicas.
 
-TEMA ACTUAL: ${theme.name} (${theme.accent})
+TEMA ACTUAL: ${theme?.name || 'PBI Designer'} (${theme?.accent || '#2563eb'})
 
 ELEMENTOS:
 ${design.elements.map(e =>
-    `- ${e.type.toUpperCase()} "${e.label}": en (${e.position.x},${e.position.y}) de ${e.size.w}x${e.size.h}px`
-  ).join('\n')}
+      `- ${(e.type||'').toUpperCase()} "${e.label}": en (${e.position?.x||e.x||0},${e.position?.y||e.y||0}) de ${e.size?.w||e.w||0}x${e.size?.h||e.h||0}px`
+    ).join('\n')}
 
-Por favor, proporciona sugerencias concretas sobre:
-1. Mejoras en la disposición (alineación, agrupación, espaciado)
-2. Elementos faltantes que mejorarían el dashboard
-3. Optimización de colores y contraste
-4. Jerarquía visual y flujo de lectura
-5. Cualquier otra recomendación profesional
+Proporciona sugerencias concretas sobre disposición, elementos faltantes, colores, jerarquía visual y flujo de lectura. Solo texto en español, con viñetas claras.`;
 
-Formato de respuesta: Solo texto en español, con viñetas o párrafos claros.`;
+    const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
-    const response = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GEMINI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'gemini-2.5-flash',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 1,
-        max_tokens: 1000,
-      })
-    });
-
-    const data = await response.json();
+    let response, data;
+    for (const model of GEMINI_MODELS) {
+      response = await fetch(GEMINI_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 1, max_tokens: 1000 })
+      });
+      data = await response.json();
+      const geminiErr = Array.isArray(data) ? data[0]?.error : data?.error;
+      if (response.ok) break;
+      if (geminiErr?.code === 503 || geminiErr?.status === 'UNAVAILABLE' || response.status === 503) continue;
+      throw new Error(geminiErr?.message || `Error Gemini HTTP ${response.status}`);
+    }
 
     if (!response.ok) {
-      throw new Error(data.error?.message || 'Error en Groq');
+      return res.status(503).json({ error: '⏳ Todos los modelos de Gemini están con alta demanda. Espera unos segundos.' });
     }
 
     const suggestions = data.choices[0].message.content;

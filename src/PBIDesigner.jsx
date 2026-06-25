@@ -163,10 +163,83 @@ function fileIcon(n=""){
   if(/\.(xlsx|xls|csv)$/i.test(n))return"📊";
   return"📎";
 }
+function fmtN(n){
+  if(Math.abs(n)>=1e6)return(n/1e6).toFixed(1)+'M';
+  if(Math.abs(n)>=1e3)return(n/1e3).toFixed(1)+'K';
+  return Number.isInteger(n)?String(n):n.toFixed(2);
+}
+function tabularSummary(headers,dataRows,source){
+  const cols=headers.map((h,i)=>{
+    const vals=dataRows.map(r=>r[i]).filter(v=>v!==''&&v!=null);
+    const nums=vals.map(v=>parseFloat(String(v).replace(/[$,%\s]/g,''))).filter(v=>!isNaN(v)&&isFinite(v));
+    if(nums.length>vals.length*0.6){
+      const sum=nums.reduce((a,b)=>a+b,0);
+      return{h,k:'n',sum,avg:sum/nums.length,n:nums.length};
+    }
+    const uniq=[...new Set(vals.map(String))];
+    return{h,k:'c',uniq,n:vals.length};
+  });
+  const colLines=cols.map(c=>
+    c.k==='n'
+      ?`  • ${c.h} [numérica: total=${fmtN(c.sum)}, prom=${fmtN(c.avg)}]`
+      :`  • ${c.h} [categórica: ${c.uniq.slice(0,6).join(', ')}${c.uniq.length>6?` +${c.uniq.length-6} más`:''}]`
+  );
+  const sample=dataRows.slice(0,5).map(r=>
+    headers.map((_,i)=>String(r[i]??'').slice(0,16)).join(' | ')
+  );
+  const numCols=cols.filter(c=>c.k==='n').map(c=>c.h);
+  const catCols=cols.filter(c=>c.k==='c').map(c=>c.h);
+  const content=[
+    `${source} — ${dataRows.length} filas, ${headers.length} columnas`,
+    'Columnas:',
+    ...colLines,
+    '',
+    'Muestra:',
+    headers.join(' | '),
+    ...sample
+  ].join('\n');
+  return{content,numCols,catCols,rows:dataRows.length};
+}
 async function readFile(file){
+  const MAX_SIZE=15*1024*1024; // 15 MB
+  if(file.size>MAX_SIZE){
+    throw new Error(`El archivo "${file.name}" es demasiado grande (${(file.size/1024/1024).toFixed(1)} MB). Máximo: 15 MB.`);
+  }
   if(file.type.startsWith("image/")){
     const b64=await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(",")[1]);r.readAsDataURL(file);});
     return{type:"image",name:file.name,mediaType:file.type,base64:b64};
+  }
+  // Excel — formato binario, necesita SheetJS para parsear
+  if(/\.(xlsx|xls)$/i.test(file.name)){
+    try{
+      const XLSX=await import('xlsx');
+      const ab=await file.arrayBuffer();
+      const wb=XLSX.read(ab);
+      const sheetName=wb.SheetNames[0];
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheetName],{header:1,defval:''});
+      const headers=(rows[0]||[]).map(String).filter(Boolean);
+      const dataRows=rows.slice(1).filter(r=>r.some(c=>c!==''&&c!=null));
+      const{content,numCols,catCols,rows:rowCount}=tabularSummary(headers,dataRows,`Hoja "${sheetName}"`);
+      return{type:"text",name:file.name,content,meta:{rows:rowCount,numCols,catCols}};
+    }catch(err){
+      throw new Error(`No se pudo leer el Excel "${file.name}": ${err.message}`);
+    }
+  }
+  // CSV — texto plano, parseo propio sin librería
+  if(/\.csv$/i.test(file.name)){
+    const raw=await file.text();
+    const lines=raw.split(/\r?\n/).filter(l=>l.trim());
+    if(lines.length<2)return{type:"text",name:file.name,content:raw.slice(0,3000)};
+    const sep=lines[0].includes('\t')?'\t':lines[0].split(';').length>lines[0].split(',').length?';':',';
+    const parseL=l=>{
+      const res=[];let cur='';let q=false;
+      for(const ch of l){if(ch==='"'){q=!q;}else if(ch===sep&&!q){res.push(cur.trim());cur='';}else cur+=ch;}
+      res.push(cur.trim());return res;
+    };
+    const headers=parseL(lines[0]).map(h=>h.replace(/^"|"$/g,''));
+    const dataRows=lines.slice(1).map(l=>parseL(l).map(v=>v.replace(/^"|"$/g,'')));
+    const{content,numCols,catCols,rows:rowCount}=tabularSummary(headers,dataRows,'CSV');
+    return{type:"text",name:file.name,content,meta:{rows:rowCount,numCols,catCols}};
   }
   return{type:"text",name:file.name,content:await file.text()};
 }
@@ -326,10 +399,42 @@ If there are more KPIs than fit, you may place 2 KPIs side by side: kpi_left x=2
 IMPORT MODE — when user uploads an image of an existing dashboard: analyze the image and recreate the layout as faithfully as possible. Infer element types, approximate positions and sizes. Use mode:"replace".
 
 CANVAS THEME RULES:
-- DEFAULT: canvasTheme = null unless user EXPLICITLY mentions colors/dark/brand/theme
-- "wallpaper" = area OUTSIDE the page. "canvas" = the page itself.
-- DARK: canvas ~#0d1b2a, cardBg ~#0f2236, text ~#e2f4ff, accent bright, wallpaper ~#060e18
-- LIGHT: canvas #ffffff, cardBg #ffffff, accent = brand color
+- mode:"replace" (NEW dashboard): ALWAYS generate canvasTheme. Detect the domain from the user's request and apply the matching palette below. Never return canvasTheme:null for new dashboards.
+- mode:"update": only change canvasTheme if user EXPLICITLY asks to change colors/theme/dark mode.
+- If user mentions specific brand colors (e.g. "colores corporativos verdes") → override accent/accent2/headerBg with those.
+- "wallpaper" = area OUTSIDE the page. "canvas" = page background itself.
+
+DOMAIN COLOR PALETTES — pick the best match for the request:
+
+AGRICULTURE/COSECHA/CAMPO/FRUTA/ARÁNDANO/PALTA/UVA/CULTIVO/AGRÍCOLA:
+{"canvas":"#f8faf5","wallpaper":"#dcfce7","cardBg":"#ffffff","cardBorder":"#bbf7d0","accent":"#16a34a","accent2":"#15803d","secondary":"#f0fdf4","text":"#14532d","textSub":"#166534","textMuted":"#4ade80","headerBg":"#15803d","success":"#16a34a","danger":"#dc2626","warning":"#d97706","r":8}
+
+FINANCE/FINANZAS/COSTOS/PRESUPUESTO/BUDGET/CONTABILIDAD/EBITDA/INVERSIÓN:
+{"canvas":"#f8faff","wallpaper":"#dbeafe","cardBg":"#ffffff","cardBorder":"#bfdbfe","accent":"#1e40af","accent2":"#1d4ed8","secondary":"#eff6ff","text":"#1e293b","textSub":"#475569","textMuted":"#94a3b8","headerBg":"#1e3a5f","success":"#059669","danger":"#dc2626","warning":"#d97706","r":8}
+
+MANUFACTURING/PRODUCCIÓN/PROCESO/PLANTA/INDUSTRIA/OEE/EFICIENCIA/TURNO/FÁBRICA:
+{"canvas":"#faf5ff","wallpaper":"#ede9fe","cardBg":"#ffffff","cardBorder":"#ddd6fe","accent":"#7c3aed","accent2":"#6d28d9","secondary":"#f5f3ff","text":"#1e1b4b","textSub":"#5b21b6","textMuted":"#8b5cf6","headerBg":"#4c1d95","success":"#059669","danger":"#dc2626","warning":"#d97706","r":8}
+
+SALES/VENTAS/COMERCIAL/RETAIL/TIENDA/PRODUCTO/CLIENTE/CRM:
+{"canvas":"#fffbeb","wallpaper":"#fde68a","cardBg":"#ffffff","cardBorder":"#fcd34d","accent":"#b45309","accent2":"#92400e","secondary":"#fef3c7","text":"#1c1917","textSub":"#78350f","textMuted":"#d97706","headerBg":"#92400e","success":"#16a34a","danger":"#dc2626","warning":"#f59e0b","r":8}
+
+HEALTH/SALUD/MÉDICO/HOSPITAL/CLÍNICA/PACIENTE/FARMACIA:
+{"canvas":"#f0f9ff","wallpaper":"#bae6fd","cardBg":"#ffffff","cardBorder":"#7dd3fc","accent":"#0284c7","accent2":"#0369a1","secondary":"#e0f2fe","text":"#082f49","textSub":"#0369a1","textMuted":"#38bdf8","headerBg":"#0c4a6e","success":"#059669","danger":"#dc2626","warning":"#d97706","r":8}
+
+TECHNOLOGY/IT/SOFTWARE/DIGITAL/SISTEMA/APP/PLATAFORMA/DATOS/DATA:
+{"canvas":"#0f172a","wallpaper":"#020617","cardBg":"#1e293b","cardBorder":"#334155","accent":"#818cf8","accent2":"#6366f1","secondary":"#1e293b","text":"#f1f5f9","textSub":"#94a3b8","textMuted":"#64748b","headerBg":"#1e1b4b","success":"#22c55e","danger":"#f87171","warning":"#fbbf24","r":8}
+
+LOGISTICS/LOGÍSTICA/DELIVERY/SUPPLY/TRANSPORTE/FLOTA/CADENA:
+{"canvas":"#f0fdfa","wallpaper":"#a7f3d0","cardBg":"#ffffff","cardBorder":"#99f6e4","accent":"#0891b2","accent2":"#0e7490","secondary":"#ccfbf1","text":"#134e4a","textSub":"#0f766e","textMuted":"#2dd4bf","headerBg":"#164e63","success":"#059669","danger":"#dc2626","warning":"#d97706","r":8}
+
+HR/RRHH/RECURSOS HUMANOS/PERSONAS/EMPLEADOS/NÓMINA/COLABORADORES/TALENTO:
+{"canvas":"#fff1f2","wallpaper":"#fecdd3","cardBg":"#ffffff","cardBorder":"#fda4af","accent":"#be185d","accent2":"#9d174d","secondary":"#ffe4e6","text":"#1e293b","textSub":"#be185d","textMuted":"#f43f5e","headerBg":"#831843","success":"#059669","danger":"#dc2626","warning":"#d97706","r":8}
+
+ENERGY/ENERGÍA/UTILITIES/ELECTRICIDAD/SOLAR/CONSUMO/GAS:
+{"canvas":"#fffbeb","wallpaper":"#fed7aa","cardBg":"#ffffff","cardBorder":"#fcd34d","accent":"#d97706","accent2":"#b45309","secondary":"#ffedd5","text":"#1c1917","textSub":"#78350f","textMuted":"#f59e0b","headerBg":"#78350f","success":"#16a34a","danger":"#dc2626","warning":"#f59e0b","r":8}
+
+DEFAULT (domain not recognized — use for general/mixed dashboards):
+{"canvas":"#f8fafc","wallpaper":"#e2e8f0","cardBg":"#ffffff","cardBorder":"#bfdbfe","accent":"#2563eb","accent2":"#1d4ed8","secondary":"#eff6ff","text":"#1e293b","textSub":"#475569","textMuted":"#94a3b8","headerBg":"#1e3a8a","success":"#059669","danger":"#dc2626","warning":"#f59e0b","r":8}
 
 LAYOUT RULES — Canvas ${cw}×${ch}px, NO overlaps. Apply PROFESSIONAL dashboard design science:
 
@@ -363,8 +468,6 @@ TITLES: descriptive, not generic. "Ventas por Región" not "Gráfico 1". Titles 
 COLOR DISCIPLINE: 3-5 colors max. Accent for emphasis, neutrals for structure. Never rainbow.
 VERIFY every element: x+w≤${cw} AND y+h≤${ch}. Gaps are multiples of 8. No overlaps. Aligned edges.
 
-STRICT DEFAULT: canvasTheme=null unless user EXPLICITLY mentions colors/dark/brand/theme.
-
 DOMAIN INTELLIGENCE — match labels and visual types to the domain detected in the user's request:
 
 MANUFACTURING / PROCESS CONTROL → gauge for efficiency/OEE/quality %, bar for production by shift/line, line for hourly/daily trends.
@@ -381,8 +484,8 @@ SALES / FINANCE → bar for revenue by product/region, line for monthly trend, p
 
 GAUGE USAGE — use gauge when the metric is a % with an implicit target (quality, efficiency, OEE, humidity, capacity utilization). Gauge works best at w≥160, h≥160. Place 2-3 gauges in the primary chart row alongside a bar or line chart.
 
-FEW-SHOT EXAMPLE — Process/Agriculture dashboard (960×580). NOTE: elements[0]=header, elements[1]=nav ALWAYS:
-<LAYOUT>{"mode":"replace","canvasTheme":null,"header":{"show":true,"title":"Control de Proceso","subtitle":"Turno Actual","height":56,"bgColor":""},"navConfig":{"position":"left","style":"static","width":192},"elements":[{"id":1,"type":"header","x":0,"y":0,"w":960,"h":56,"label":"Control de Proceso"},{"id":2,"type":"nav","x":0,"y":56,"w":192,"h":524,"label":"Nav Menu"},{"id":3,"type":"kpi","x":208,"y":72,"w":168,"h":96,"label":"Producción Diaria"},{"id":4,"type":"kpi","x":384,"y":72,"w":168,"h":96,"label":"Eficiencia de Proceso"},{"id":5,"type":"kpi","x":560,"y":72,"w":168,"h":96,"label":"Defectos PPM"},{"id":6,"type":"kpi","x":736,"y":72,"w":168,"h":96,"label":"Paros No Plan."},{"id":7,"type":"gauge","x":208,"y":184,"w":192,"h":192,"label":"OEE"},{"id":8,"type":"gauge","x":408,"y":184,"w":192,"h":192,"label":"Capacidad Utilizada"},{"id":9,"type":"line","x":608,"y":184,"w":296,"h":192,"label":"Producción por Hora"},{"id":10,"type":"bar","x":208,"y":392,"w":360,"h":172,"label":"Producción por Turno"},{"id":11,"type":"table","x":576,"y":392,"w":328,"h":172,"label":"Detalle por Línea"}]}</LAYOUT>`;}
+FEW-SHOT EXAMPLE — Process/Agriculture dashboard (960×580). NOTE: elements[0]=header, elements[1]=nav ALWAYS. ROW 0=slicer filter bar, ROW 1=KPIs, ROW 2=charts, ROW 3=tables:
+<LAYOUT>{"mode":"replace","canvasTheme":null,"header":{"show":true,"title":"Control de Proceso","subtitle":"Turno Actual","height":56,"bgColor":""},"navConfig":{"position":"left","style":"collapsible","width":192},"elements":[{"id":1,"type":"header","x":0,"y":0,"w":960,"h":56,"label":"Control de Proceso"},{"id":2,"type":"nav","x":0,"y":56,"w":192,"h":524,"label":"Nav Menu"},{"id":3,"type":"slicer","x":208,"y":72,"w":736,"h":40,"label":"Filtros: Turno · Línea · Fecha"},{"id":4,"type":"kpi","x":208,"y":128,"w":176,"h":88,"label":"Producción Diaria"},{"id":5,"type":"kpi","x":392,"y":128,"w":176,"h":88,"label":"Eficiencia de Proceso"},{"id":6,"type":"kpi","x":576,"y":128,"w":176,"h":88,"label":"Defectos PPM"},{"id":7,"type":"kpi","x":760,"y":128,"w":184,"h":88,"label":"Paros No Plan."},{"id":8,"type":"gauge","x":208,"y":232,"w":184,"h":184,"label":"OEE"},{"id":9,"type":"gauge","x":400,"y":232,"w":184,"h":184,"label":"Capacidad Utilizada"},{"id":10,"type":"line","x":592,"y":232,"w":352,"h":184,"label":"Producción por Hora"},{"id":11,"type":"bar","x":208,"y":432,"w":352,"h":140,"label":"Producción por Turno"},{"id":12,"type":"table","x":568,"y":432,"w":376,"h":140,"label":"Detalle por Línea"}]}</LAYOUT>`;}
 
 
 // Intenta parsear JSON; si está truncado, lo repara recortando al último
@@ -426,19 +529,49 @@ async function callAI(msgs,cw=960,ch=580,currentState=null){
     });
     const data=await res.json();
     if(!res.ok){
+      if(res.status===401||res.status===403){
+        return{text:`⚠️ Sesión expirada. Por favor recarga la página e inicia sesión de nuevo.`,layout:null,audit:null};
+      }
+      if(res.status===402){
+        const bal=data?.creditsBalance??0;
+        return{text:`⚠️ Créditos insuficientes (saldo: ${bal}). Contacta al administrador.`,layout:null,audit:null};
+      }
+      if(res.status===429){
+        const wait=data?.retryAfter||60;
+        return{text:`⏳ Límite de solicitudes alcanzado (máx. ${data?.limit||12}/min). Espera unos ${wait} segundos e inténtalo de nuevo.`,layout:null,audit:null};
+      }
+      if(res.status===503){
+        return{text:`⏳ El servicio de IA está con alta demanda. Espera unos segundos e intenta de nuevo.`,layout:null,audit:null};
+      }
       const msg=data?.error||`HTTP ${res.status}`;
       return{text:`⚠️ Error API: ${msg}`,layout:null,audit:null};
     }
     // Backend devuelve { text, layout } — layout ya extraído y normalizado por el servidor
-    // Detectar bloque <AUDIT> que puede venir dentro del texto (el backend no lo extrae)
     let audit=null;
     let cleanText=data.text||'';
+    let layout=data.layout||null;
+
+    // Fallback: si el backend no pudo extraer el layout (lo devolvió en text crudo),
+    // intentar extraerlo aquí en el cliente con tryParseLayout + sanitizador
+    if(!layout&&cleanText.includes('<LAYOUT>')){
+      const m=cleanText.match(/<LAYOUT>([\s\S]*?)<\/LAYOUT>/);
+      if(m){
+        const sanitized=m[1].trim()
+          .replace(/\r\n/g,'\\n').replace(/\r/g,'\\n').replace(/\n/g,'\\n').replace(/\t/g,'\\t');
+        const parsed=tryParseLayout(sanitized);
+        if(parsed){layout=parsed;cleanText=cleanText.replace(/<LAYOUT>[\s\S]*?<\/LAYOUT>/,'').trim();}
+      }
+    }
+    // Si aún hay <LAYOUT> en el texto (parse falló), quitarlo para no mostrarlo al usuario
+    cleanText=cleanText.replace(/<LAYOUT>[\s\S]*?<\/LAYOUT>/gi,'').trim();
+
+    // Detectar bloque <AUDIT>
     const auditM=cleanText.match(/<audit>([\s\S]*?)<\/audit>/i);
     if(auditM){
       try{audit=JSON.parse(auditM[1].trim());}catch(e){}
       cleanText=cleanText.replace(/<audit>[\s\S]*?<\/audit>/gi,'').trim();
     }
-    return{text:cleanText,layout:data.layout,audit};
+    return{text:cleanText,layout,audit};
   }catch(e){
     return{text:`⚠️ Error de red: ${e.message}`,layout:null,audit:null};
   }
@@ -467,19 +600,26 @@ function KPICard({el,ct}){
   const[v,chg,up,pts]=D[el.label]||["—",0,true,[20,30,25,40,35,45]];
   const W=58,H=22,mn=Math.min(...pts),mx=Math.max(...pts),rng=mx-mn||1;
   const sp=pts.map((p,i)=>`${(i/(pts.length-1))*W},${H-((p-mn)/rng)*H}`).join(" ");
+  const showSpark=el.w>120&&el.h>65;
+  // Font size adaptativo: cabe el valor sin truncarse
+  const availW=Math.max(40,(showSpark?el.w-90:el.w-26));
+  const baseFz=Math.max(15,Math.min(26,el.w/7));
+  const charW=baseFz*0.62; // ancho promedio por carácter en Segoe UI
+  const fz=v.length*charW>availW?Math.max(11,Math.floor(availW/v.length/0.62)):baseFz;
   return(
-    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"11px 13px",display:"flex",flexDirection:"column",justifyContent:"space-between",overflow:"hidden",boxSizing:"border-box"}}>
-      <div style={{fontSize:8,color:ct.textMuted,textTransform:"uppercase",letterSpacing:1.2,fontFamily:"'Segoe UI',sans-serif",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{el.label}</div>
+    <div style={{width:"100%",height:"100%",background:`linear-gradient(145deg,${rgba(ct.accent,0.05)} 0%,${ct.cardBg} 55%)`,border:`1px solid ${ct.cardBorder}`,borderTop:`3px solid ${ct.accent}`,borderRadius:ct.r,padding:"11px 13px",display:"flex",flexDirection:"column",justifyContent:"space-between",overflow:"hidden",boxSizing:"border-box"}}>
+      <div style={{fontSize:8,color:ct.accent,textTransform:"uppercase",letterSpacing:1.2,fontFamily:"'Segoe UI',sans-serif",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",opacity:0.75}}>{el.label}</div>
       <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between"}}>
-        <div style={{overflow:"hidden"}}>
-          <div style={{fontSize:Math.max(15,Math.min(26,el.w/7)),fontWeight:700,color:ct.text,letterSpacing:-0.5,lineHeight:1.1,fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v}</div>
+        <div style={{overflow:"hidden",flex:1,minWidth:0}}>
+          <div style={{fontSize:fz,fontWeight:800,color:ct.text,letterSpacing:-0.5,lineHeight:1.1,fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v}</div>
           {el.h>70&&<div style={{fontSize:9,color:up?ct.success:ct.danger,display:"flex",alignItems:"center",gap:2,marginTop:2}}>
-            <span>{up?"▲":"▼"}</span><span style={{fontWeight:600}}>{Math.abs(chg)}%</span>
+            <span>{up?"▲":"▼"}</span><span style={{fontWeight:700}}>{Math.abs(chg)}%</span>
             <span style={{color:ct.textMuted,marginLeft:2}}>vs prev</span>
           </div>}
         </div>
-        {el.w>120&&el.h>65&&<svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{flexShrink:0,marginLeft:6}}>
-          <polyline points={sp} fill="none" stroke={up?ct.success:ct.danger} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.85"/>
+        {showSpark&&<svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{flexShrink:0,marginLeft:6}}>
+          <defs><linearGradient id={`sk${el.id}`} x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={up?ct.success:ct.danger} stopOpacity="0.5"/><stop offset="100%" stopColor={up?ct.success:ct.danger} stopOpacity="1"/></linearGradient></defs>
+          <polyline points={sp} fill="none" stroke={`url(#sk${el.id})`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
         </svg>}
       </div>
     </div>
@@ -498,12 +638,12 @@ function BarChart({el,ct}){
         </div>
         <div style={{flex:1,position:"relative",display:"flex",flexDirection:"column",overflow:"hidden"}}>
           <div style={{position:"absolute",inset:"2px 0 16px 0",display:"flex",flexDirection:"column",justifyContent:"space-between",pointerEvents:"none"}}>
-            {[0,1,2,3,4].map(i=><div key={i} style={{height:1,background:ct.cardBorder,opacity:0.7}}/>)}
+            {[0,1,2,3,4].map(i=><div key={i} style={{height:1,background:ct.cardBorder,opacity:0.6}}/>)}
           </div>
           <div style={{flex:1,display:"flex",alignItems:"flex-end",gap:3,paddingBottom:16,paddingTop:2,overflow:"hidden"}}>
             {vis.map((d,i)=>(
               <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",gap:2,height:"100%",minWidth:0}}>
-                <div style={{position:"relative",width:"68%",height:`${(d.v/mx)*100}%`,background:`linear-gradient(180deg,${ct.accent},${ct.accent2||ct.accent})`,borderRadius:"2px 2px 0 0",minHeight:2}}>
+                <div style={{position:"relative",width:"68%",height:`${(d.v/mx)*100}%`,background:`linear-gradient(180deg,${ct.accent},${ct.accent2||ct.accent})`,borderRadius:"3px 3px 0 0",minHeight:2}}>
                   {el.h>150&&<div style={{position:"absolute",top:-13,left:"50%",transform:"translateX(-50%)",fontSize:7,color:ct.textMuted,whiteSpace:"nowrap"}}>{d.v}</div>}
                 </div>
                 {el.h>110&&<div style={{fontSize:7,color:ct.textMuted,fontFamily:"'Segoe UI',sans-serif",whiteSpace:"nowrap"}}>{d.l}</div>}
@@ -524,11 +664,14 @@ function LineChart({el,ct}){
     <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"10px 12px 6px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column"}}>
       <div style={{fontSize:10,fontWeight:700,color:ct.text,marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flexShrink:0,fontFamily:"'Segoe UI',sans-serif"}}>{el.label}</div>
       <svg width="100%" height="100%" viewBox={`0 0 ${W} ${H+14}`} preserveAspectRatio="none" style={{flex:1}}>
-        <defs><linearGradient id={`g${el.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={ct.accent} stopOpacity="0.22"/><stop offset="100%" stopColor={ct.accent} stopOpacity="0.02"/></linearGradient></defs>
-        {[.25,.5,.75,1].map(t=><line key={t} x1="0" y1={H*(1-t)} x2={W} y2={H*(1-t)} stroke={ct.cardBorder} strokeWidth="0.6" opacity="0.8"/>)}
+        <defs>
+          <linearGradient id={`g${el.id}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={ct.accent} stopOpacity="0.32"/><stop offset="100%" stopColor={ct.accent} stopOpacity="0.03"/></linearGradient>
+          <linearGradient id={`gl${el.id}`} x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={ct.accent2||ct.accent}/><stop offset="100%" stopColor={ct.accent}/></linearGradient>
+        </defs>
+        {[.25,.5,.75,1].map(t=><line key={t} x1="0" y1={H*(1-t)} x2={W} y2={H*(1-t)} stroke={ct.cardBorder} strokeWidth="0.6" opacity="0.7"/>)}
         <polygon points={`0,${H} ${path} ${W},${H}`} fill={`url(#g${el.id})`}/>
-        <polyline points={path} fill="none" stroke={ct.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        {el.w>200&&pts.map((p,i)=><circle key={i} cx={(i/(pts.length-1))*W} cy={H-((p-mn)/rng)*H} r="2.5" fill={ct.accent} stroke={ct.cardBg} strokeWidth="1.5"/>)}
+        <polyline points={path} fill="none" stroke={`url(#gl${el.id})`} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        {el.w>200&&pts.map((p,i)=><circle key={i} cx={(i/(pts.length-1))*W} cy={H-((p-mn)/rng)*H} r="3" fill={ct.accent} stroke={ct.cardBg} strokeWidth="1.5"/>)}
         {el.h>120&&pts.filter((_,i)=>i%2===0).map((_,i)=><text key={i} x={(i*2/(pts.length-1))*W} y={H+12} fontSize="7" fill={ct.textMuted} textAnchor="middle" fontFamily="'Segoe UI',sans-serif">{lbls[i*2]}</text>)}
       </svg>
     </div>
@@ -670,45 +813,70 @@ function NavViz({el,ct,navCfg}){
   // Horizontal si la config dice "top" O si el elemento es más ancho que alto (vista móvil apilada)
   const horiz=nav.position==="top"||(el&&el.w>el.h*1.5);
   // El nav deriva un tono SUAVE del tema (mezcla acento con el fondo del canvas).
-  // En canvas claro: tono claro tintado del acento. En oscuro: tono oscuro tintado.
   const themeNavBg=(()=>{
     const base=ct.headerBg||ct.accent2||ct.accent||"#1e293b";
     const canvasC=ct.canvas||"#ffffff";
-    // Mezclar el color base hacia el fondo del canvas → más suave, integrado al diseño
     return isDark(canvasC)?mix(base,canvasC,0.45):mix(base,canvasC,0.78);
   })();
   const navBg=c.bgCustom?c.bg:themeNavBg;
-  // Texto del nav: contraste según si el nav quedó claro u oscuro
   const navIsDark=isDark(navBg);
   const accent=c.selectedCustom?c.selected:(ct.accent||c.accent||c.selected);
   const txtActive=c.textActiveCustom?c.textActive:(navIsDark?"#ffffff":(ct.text||"#1e293b"));
   const txtInactive=c.textInactiveCustom?c.textInactive:(navIsDark?rgba("#ffffff",0.65):rgba(ct.text||"#1e293b",0.6));
-  const activeIdx=pages.findIndex(p=>p.active);
-  const actI=activeIdx>=0?activeIdx:0;
+  const defaultActive=pages.findIndex(p=>p.active);
+  // actI es estado local — no afecta el diseño guardado, solo la preview interactiva
+  const[actI,setActI]=useState(defaultActive>=0?defaultActive:0);
+  const[hoverI,setHoverI]=useState(-1);
   const fs=nav.fontSize||9;
+  // Modo "Ninguno": franja delgada con indicador visual
+  if(nav.position==="none"){
+    return(
+      <div style={{width:"100%",height:"100%",background:"repeating-linear-gradient(45deg,rgba(0,0,0,0.06) 0px,rgba(0,0,0,0.06) 3px,transparent 3px,transparent 8px)",border:"1.5px dashed rgba(0,0,0,0.2)",borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+        <span style={{fontSize:7,color:"rgba(0,0,0,0.35)",writingMode:"vertical-rl",letterSpacing:1,userSelect:"none",fontFamily:"monospace"}}>NAV OFF</span>
+      </div>
+    );
+  }
+  const isCollapsible=nav.style==="collapsible";
+  const isFloating=nav.style==="floating";
+  // Flotante: borde sutil + sombra para indicar que flota sobre el contenido
+  const floatStyle=isFloating?{boxShadow:"4px 0 16px rgba(0,0,0,0.22)",borderRight:"2px solid rgba(255,255,255,0.12)"}:{};
   return(
-    <div style={{width:"100%",height:"100%",background:navBg,borderRadius:ct.r,border:`1px solid ${rgba("#000000",0.1)}`,overflow:"hidden",display:"flex",flexDirection:horiz?"row":"column"}}>
+    <div style={{width:"100%",height:"100%",background:navBg,borderRadius:ct.r,border:`1px solid ${rgba("#000000",0.1)}`,overflow:"hidden",display:"flex",flexDirection:horiz?"row":"column",...floatStyle}}>
       {!horiz&&<div style={{padding:"14px 12px 10px",borderBottom:`1px solid ${rgba(txtInactive,0.2)}`,flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           {nav.logoUrl
             ?<img src={directImageUrl(nav.logoUrl)} alt="" style={{width:26,height:26,borderRadius:6,objectFit:"contain",flexShrink:0}} onError={e=>{e.currentTarget.style.display="none";}}/>
             :<div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${accent},${ct.accent2||accent})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:"#fff",flexShrink:0}}>⬡</div>}
-          <div style={{overflow:"hidden"}}>
+          <div style={{overflow:"hidden",flex:1}}>
             <div style={{fontSize:10,fontWeight:700,color:txtActive,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",fontFamily:"'Segoe UI',sans-serif"}}>{nav.reportName||"Mi Reporte"}</div>
-            <div style={{fontSize:7,color:txtInactive,fontFamily:"monospace",letterSpacing:0.8}}>POWER BI</div>
+            <div style={{fontSize:7,color:txtInactive,fontFamily:"monospace",letterSpacing:0.8}}>{isFloating?"FLOTANTE":isCollapsible?"COLAPSABLE":"ESTÁTICO"}</div>
           </div>
+          {isCollapsible&&(
+            <div title="Botón colapsar (visible en Power BI)" style={{width:20,height:20,borderRadius:4,background:rgba(txtInactive,0.15),display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,cursor:"default"}}>
+              <span style={{fontSize:10,color:txtInactive}}>≡</span>
+            </div>
+          )}
         </div>
       </div>}
       <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:horiz?"row":"column",padding:horiz?"0":"6px 0"}}>
         {pages.map((p,idx)=>{
           const on=idx===actI;
+          const hovering=idx===hoverI&&!on;
           return(
-            <div key={p.id??idx} style={{display:"flex",alignItems:"center",gap:7,padding:horiz?"8px 14px":"7px 12px",
-              background:on?rgba(accent,(c.selectedOpacity??25)/100):"transparent",
-              borderLeft:!horiz?`3px solid ${on?accent:"transparent"}`:"none",
-              borderBottom:horiz?`2px solid ${on?accent:"transparent"}`:"none",flexShrink:0,minWidth:0}}>
-              <span style={{fontSize:11,flexShrink:0}}>{p.icon}</span>
-              <span style={{fontSize:fs,color:on?txtActive:txtInactive,fontFamily:"'Segoe UI',sans-serif",fontWeight:on?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.label}</span>
+            <div key={p.id??idx}
+              onMouseDown={e=>e.stopPropagation()}
+              onClick={e=>{e.stopPropagation();setActI(idx);}}
+              onMouseEnter={()=>setHoverI(idx)}
+              onMouseLeave={()=>setHoverI(-1)}
+              style={{display:"flex",alignItems:"center",gap:7,padding:horiz?"8px 14px":"7px 12px",
+                background:on?rgba(accent,(c.selectedOpacity??25)/100):hovering?rgba(accent,0.08):"transparent",
+                borderLeft:!horiz?`3px solid ${on?accent:hovering?rgba(accent,0.4):"transparent"}`:"none",
+                borderBottom:horiz?`2px solid ${on?accent:"transparent"}`:"none",
+                flexShrink:0,minWidth:0,cursor:"pointer",
+                transition:"background 0.15s,border-color 0.15s"}}>
+              <span style={{fontSize:11,flexShrink:0,opacity:on?1:hovering?0.85:0.7,transition:"opacity 0.15s"}}>{p.icon}</span>
+              <span style={{fontSize:fs,color:on?txtActive:hovering?mix(txtInactive,txtActive,0.5):txtInactive,fontFamily:"'Segoe UI',sans-serif",fontWeight:on?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",transition:"color 0.15s"}}>{p.label}</span>
+              {on&&!horiz&&<div style={{marginLeft:"auto",width:4,height:4,borderRadius:"50%",background:accent,flexShrink:0,boxShadow:`0 0 6px ${accent}`}}/>}
             </div>
           );
         })}
@@ -845,13 +1013,14 @@ function KpiSparkViz({el,ct}){
   const max=Math.max(...data),min=Math.min(...data);
   const pts=data.map((v,i)=>`${i*(100/(data.length-1))},${30-((v-min)/(max-min))*26}`).join(" ");
   return(
-    <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"11px 13px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
-      <div style={{fontSize:9,fontWeight:600,color:ct.textSub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{el.label}</div>
+    <div style={{width:"100%",height:"100%",background:`linear-gradient(145deg,${rgba(ct.accent,0.05)} 0%,${ct.cardBg} 55%)`,border:`1px solid ${ct.cardBorder}`,borderLeft:`3px solid ${ct.accent}`,borderRadius:ct.r,padding:"11px 13px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column",justifyContent:"space-between"}}>
+      <div style={{fontSize:9,fontWeight:700,color:ct.accent,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif",opacity:0.75}}>{el.label}</div>
       <div style={{fontSize:22,fontWeight:800,color:ct.text,fontFamily:"'Segoe UI',sans-serif",lineHeight:1}}>$84.2K</div>
       <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-between",gap:8}}>
-        <span style={{fontSize:9,fontWeight:600,color:ct.success||"#059669",fontFamily:"monospace"}}>▲ 12.4%</span>
+        <span style={{fontSize:9,fontWeight:700,color:ct.success||"#059669",fontFamily:"monospace"}}>▲ 12.4%</span>
         <svg width="60%" height="28" viewBox="0 0 100 30" preserveAspectRatio="none" style={{flexShrink:0}}>
-          <polyline points={pts} fill="none" stroke={ct.accent} strokeWidth="2" vectorEffect="non-scaling-stroke"/>
+          <defs><linearGradient id={`sp2${el.id}`} x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stopColor={ct.accent} stopOpacity="0.4"/><stop offset="100%" stopColor={ct.accent} stopOpacity="1"/></linearGradient></defs>
+          <polyline points={pts} fill="none" stroke={`url(#sp2${el.id})`} strokeWidth="2" vectorEffect="non-scaling-stroke"/>
         </svg>
       </div>
     </div>
@@ -893,7 +1062,8 @@ function CanvasEl({el,ct,selected,onSelect,onUpdate,onCommit,snapGrid,navCfg,hdr
     onSelect(el.id);
     op.current={sx:e.clientX,sy:e.clientY,ox:el.x,oy:el.y};
     const z=zoom;
-    const SNAP=6; // umbral de imán en px de canvas
+    // Umbral de snap escalado al zoom: mismo "radio visual" independientemente del nivel de zoom
+    const SNAP=Math.max(4,Math.round(6/z));
     const others=(allEls||[]).filter(o=>o.id!==el.id);
     const mv=e=>{
       const ddx=(e.clientX-op.current.sx)/z;
@@ -948,10 +1118,11 @@ function CanvasEl({el,ct,selected,onSelect,onUpdate,onCommit,snapGrid,navCfg,hdr
         width:el.w,height:el.h,
         cursor:"move",userSelect:"none",zIndex:selected?200:1,
       }}>
-      {/* Visual — pointerEvents:none garantiza que nada robe el click */}
+      {/* Visual — nav permite pointerEvents para interactividad de páginas */}
       <div style={{
         position:"absolute",inset:0,overflow:"hidden",
-        borderRadius:ct.r,pointerEvents:"none",
+        borderRadius:ct.r,
+        pointerEvents:el.type==="nav"?"auto":"none",
         boxShadow:selected
           ?`0 0 0 2px ${ct.accent}, 0 0 0 5px ${rgba(ct.accent,0.2)}, 0 4px 20px rgba(0,0,0,0.15)`
           :`0 1px 4px rgba(0,0,0,0.08)`,
@@ -959,6 +1130,13 @@ function CanvasEl({el,ct,selected,onSelect,onUpdate,onCommit,snapGrid,navCfg,hdr
       }}>
         <Visual el={el} ct={ct} navCfg={navCfg} hdrCfg={hdrCfg}/>
       </div>
+      {/* Badge "Interactivo" — solo en nav, solo cuando NO está seleccionado */}
+      {el.type==="nav"&&!selected&&(
+        <div style={{position:"absolute",top:4,right:4,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(4px)",borderRadius:4,padding:"2px 5px",display:"flex",alignItems:"center",gap:3,pointerEvents:"none",zIndex:300}}>
+          <div style={{width:5,height:5,borderRadius:"50%",background:"#22c55e",boxShadow:"0 0 5px #22c55e",flexShrink:0}}/>
+          <span style={{fontSize:7,color:"rgba(255,255,255,0.85)",fontFamily:"monospace",letterSpacing:0.5}}>INTERACTIVO</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -1025,6 +1203,7 @@ function hexToRgb(hex){
 }
 
 function generateNavHTML(nav,ct){
+  if(nav.position==="none") return `<!-- Nav desactivado (posición: ninguno) — no incluir este visual en Power BI -->`;
   const{colors,pages,fontSize,borderRadius,width,widthCollapsed,logoUrl,reportName,style}=nav;
   const isCollapsible=style==="collapsible";
   // Color de fondo: tono suave derivado del tema (igual que NavViz)
@@ -1293,10 +1472,214 @@ function mobileCanvasHeight(stackedEls){
 }
 
 
+// ═══════════════════════════════════════════════════════════════════
+// LOGIN / REGISTER SCREEN
+// ═══════════════════════════════════════════════════════════════════
+function LoginScreen({onLogin}){
+  const[view,setView]=useState("login");
+  const[email,setEmail]=useState("");
+  const[password,setPassword]=useState("");
+  const[confirmPwd,setConfirmPwd]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+  const[showPwd,setShowPwd]=useState(false);
+
+  const FIELD_STYLE={
+    width:"100%",background:"rgba(255,255,255,0.06)",
+    border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,
+    padding:"9px 12px",color:"#f1f5f9",fontSize:12,outline:"none",
+    boxSizing:"border-box",transition:"border-color 0.2s",
+    fontFamily:"'Segoe UI',sans-serif",
+  };
+  const LBL_STYLE={
+    fontSize:10,color:"#94a3b8",fontFamily:"monospace",letterSpacing:0.5,
+    display:"block",marginBottom:5,textTransform:"uppercase",
+  };
+
+  const submit=async()=>{
+    setError("");
+    if(!email.trim()||!password.trim()){setError("Email y contraseña son obligatorios.");return;}
+    if(view==="register"&&password!==confirmPwd){setError("Las contraseñas no coinciden.");return;}
+    if(view==="register"&&password.length<6){setError("La contraseña debe tener mínimo 6 caracteres.");return;}
+    setLoading(true);
+    try{
+      const url=`http://localhost:3001/api/auth/${view==="login"?"login":"register"}`;
+      const res=await fetch(url,{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({email:email.trim().toLowerCase(),password}),
+      });
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.error||"Error de autenticación");
+      onLogin(data.user,data.token);
+    }catch(e){setError(e.message);}
+    finally{setLoading(false);}
+  };
+
+  return(
+    <div style={{width:"100vw",height:"100vh",
+      background:"linear-gradient(135deg,#0a0f1e 0%,#0f2044 50%,#0a0f1e 100%)",
+      display:"flex",alignItems:"center",justifyContent:"center",
+      fontFamily:"'Segoe UI',system-ui,sans-serif",position:"relative",overflow:"hidden"}}>
+
+      {/* Cuadrícula de fondo */}
+      <div style={{position:"absolute",inset:0,pointerEvents:"none",
+        backgroundImage:`linear-gradient(rgba(59,130,246,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(59,130,246,0.05) 1px,transparent 1px)`,
+        backgroundSize:"48px 48px"}}/>
+      {/* Glow central */}
+      <div style={{position:"absolute",top:"40%",left:"50%",transform:"translate(-50%,-50%)",
+        width:600,height:400,borderRadius:"50%",
+        background:"radial-gradient(ellipse,rgba(59,130,246,0.12) 0%,transparent 70%)",
+        pointerEvents:"none"}}/>
+
+      {/* Card */}
+      <div style={{background:"rgba(10,15,30,0.88)",backdropFilter:"blur(20px)",
+        border:"1px solid rgba(59,130,246,0.2)",borderRadius:18,
+        padding:"38px 40px",width:400,maxWidth:"92vw",
+        boxShadow:"0 40px 100px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
+        position:"relative",zIndex:1}}>
+
+        {/* Logo */}
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:30}}>
+          <div style={{width:46,height:46,borderRadius:13,
+            background:"linear-gradient(135deg,#3b82f6,#1d4ed8)",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            fontSize:22,color:"#fff",fontWeight:900,
+            boxShadow:"0 6px 24px rgba(59,130,246,0.45)"}}>⬡</div>
+          <div>
+            <div style={{fontSize:19,fontWeight:800,color:"#f0f6ff",letterSpacing:-0.5,lineHeight:1.1}}>PBI Designer</div>
+            <div style={{fontSize:9,color:"#4a6080",fontFamily:"monospace",letterSpacing:1,marginTop:2}}>v2.0 · AI-POWERED</div>
+          </div>
+        </div>
+
+        {/* Toggle Login / Registro */}
+        <div style={{display:"flex",background:"rgba(255,255,255,0.04)",
+          borderRadius:9,padding:3,marginBottom:22,
+          border:"1px solid rgba(255,255,255,0.08)"}}>
+          {[["login","Iniciar sesión"],["register","Crear cuenta"]].map(([v,lbl])=>(
+            <button key={v} onClick={()=>{setView(v);setError("");setConfirmPwd("");}}
+              style={{flex:1,padding:"7px 0",border:"none",borderRadius:7,cursor:"pointer",
+                fontSize:11,fontWeight:600,transition:"all 0.2s",
+                background:view===v?"#3b82f6":"transparent",
+                color:view===v?"#fff":"#4a6080",
+                boxShadow:view===v?"0 3px 12px rgba(59,130,246,0.35)":"none"}}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+
+        {/* Campos */}
+        <div style={{display:"flex",flexDirection:"column",gap:13}}>
+          <div>
+            <label style={LBL_STYLE}>Email</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&submit()}
+              placeholder="tu@empresa.com" style={FIELD_STYLE}
+              onFocus={e=>e.target.style.borderColor="#3b82f6"}
+              onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.12)"}/>
+          </div>
+          <div>
+            <label style={LBL_STYLE}>Contraseña</label>
+            <div style={{position:"relative"}}>
+              <input type={showPwd?"text":"password"} value={password}
+                onChange={e=>setPassword(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&submit()}
+                placeholder="••••••••"
+                style={{...FIELD_STYLE,paddingRight:36}}
+                onFocus={e=>e.target.style.borderColor="#3b82f6"}
+                onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.12)"}/>
+              <button onClick={()=>setShowPwd(s=>!s)}
+                style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",
+                  background:"none",border:"none",cursor:"pointer",color:"#4a6080",fontSize:14,padding:0,lineHeight:1}}>
+                {showPwd?"🙈":"👁"}
+              </button>
+            </div>
+          </div>
+          {view==="register"&&(
+            <div>
+              <label style={LBL_STYLE}>Confirmar contraseña</label>
+              <input type={showPwd?"text":"password"} value={confirmPwd}
+                onChange={e=>setConfirmPwd(e.target.value)}
+                onKeyDown={e=>e.key==="Enter"&&submit()}
+                placeholder="••••••••" style={FIELD_STYLE}
+                onFocus={e=>e.target.style.borderColor="#3b82f6"}
+                onBlur={e=>e.target.style.borderColor="rgba(255,255,255,0.12)"}/>
+            </div>
+          )}
+        </div>
+
+        {/* Error */}
+        {error&&(
+          <div style={{marginTop:13,padding:"9px 12px",
+            background:"rgba(220,38,38,0.1)",border:"1px solid rgba(220,38,38,0.28)",
+            borderRadius:8,fontSize:11,color:"#fca5a5",lineHeight:1.55}}>
+            ⚠️ {error}
+          </div>
+        )}
+
+        {/* Submit */}
+        <button onClick={submit} disabled={loading}
+          style={{width:"100%",marginTop:16,padding:"12px",borderRadius:9,border:"none",
+            cursor:loading?"default":"pointer",
+            background:loading?"rgba(59,130,246,0.4)":"linear-gradient(135deg,#3b82f6,#1d4ed8)",
+            color:"#fff",fontSize:13,fontWeight:700,letterSpacing:0.3,
+            boxShadow:loading?"none":"0 6px 24px rgba(59,130,246,0.4)",
+            transition:"all 0.2s",opacity:loading?0.7:1}}>
+          {loading?"Verificando..."
+            :view==="login"?"Iniciar sesión →":"Crear cuenta →"}
+        </button>
+
+        {/* Acceso dev */}
+        <div style={{marginTop:18,textAlign:"center"}}>
+          <button onClick={async()=>{
+            setLoading(true);setError("");
+            try{
+              const res=await fetch("http://localhost:3001/api/auth/simple-login",{method:"POST"});
+              const data=await res.json();
+              if(!res.ok)throw new Error(data.error||"Error");
+              onLogin(data.user,data.token);
+            }catch(e){setError(e.message);}
+            finally{setLoading(false);}
+          }} style={{background:"none",border:"none",cursor:"pointer",
+            fontSize:9,color:"rgba(100,116,139,0.5)",fontFamily:"monospace",
+            textDecoration:"underline",textDecorationStyle:"dotted"}}>
+            Acceso rápido (dev)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PBIDesigner(){
   // UI shell theme — solo afecta la interfaz
   const[appThemeId,setAppThemeId]=useState("light");
   const A=APP_THEMES[appThemeId];
+
+  // ── AUTENTICACIÓN ──
+  const[user,setUser]=useState(()=>{
+    try{const s=localStorage.getItem('pbi_user');return s?JSON.parse(s):null;}catch{return null;}
+  });
+  const handleLogin=(userData,token)=>{
+    localStorage.setItem('token',token);
+    localStorage.setItem('pbi_user',JSON.stringify(userData));
+    setUser(userData);
+  };
+  const handleLogout=()=>{
+    localStorage.removeItem('token');
+    localStorage.removeItem('pbi_user');
+    setUser(null);
+  };
+
+  // Verificar token al montar — si expiró, forzar login
+  useEffect(()=>{
+    const token=localStorage.getItem('token');
+    if(!token){setUser(null);return;}
+    fetch('http://localhost:3001/api/auth/verify',{headers:{'Authorization':`Bearer ${token}`}})
+      .then(r=>{if(!r.ok){handleLogout();}else{r.json().then(d=>{if(d.user)setUser(prev=>({...prev,...d.user}));});}})
+      .catch(()=>{}); // sin internet: mantener sesión en caché
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   // Canvas theme — arranca Clean Light, solo la IA lo cambia
   const[ct,setCt]=useState({...CANVAS_DEFAULT});
@@ -1337,6 +1720,124 @@ export default function PBIDesigner(){
   const[versionsModal,setVersionsModal]=useState(false);
   const[savedDesigns,setSavedDesigns]=useState([]);
   const[savedThemes,setSavedThemes]=useState([]); // temas guardados por el usuario
+  const[autoSaveTs,setAutoSaveTs]=useState(null); // timestamp del último auto-save
+  const autoSaveTimer=useRef(null);
+  const[navCfg,setNavCfg]=useState({...NAV_DEFAULT});
+  const[hdrCfg,setHdrCfg]=useState({show:false,title:"My Report",subtitle:"Business Intelligence Dashboard",height:58,bgColor:""});
+
+  // ── SYNC NAV: reposiciona el nav Y reformula el área de contenido cuando cambia position/width ──
+  const prevNavLayout=useRef({position:NAV_DEFAULT.position,width:NAV_DEFAULT.width});
+  useEffect(()=>{
+    const{position:prevPos,width:prevW}=prevNavLayout.current;
+    if(prevPos===navCfg.position&&prevW===navCfg.width)return;
+    const oldPos=prevPos||"left";
+    const oldNavW=prevW||192;
+    prevNavLayout.current={position:navCfg.position,width:navCfg.width};
+    setEls(cur=>{
+      if(!cur.length)return cur;
+      const hdrEl=cur.find(e=>e.type==="header");
+      const hdrH=hdrEl?hdrEl.h:56;
+      const NAV_TOP_H=48;
+      const pos=navCfg.position||"left";
+      const newNavW=navCfg.width||192;
+      // Área de contenido: zona donde van los elementos que no son nav/header
+      const contentArea=(p,nw)=>{
+        if(p==="left")  return{x:nw,      y:hdrH,            w:CW-nw,  h:CH-hdrH};
+        if(p==="right") return{x:0,       y:hdrH,            w:CW-nw,  h:CH-hdrH};
+        if(p==="top")   return{x:0,       y:hdrH+NAV_TOP_H,  w:CW,     h:CH-hdrH-NAV_TOP_H};
+        /*none*/        return{x:0,       y:hdrH,            w:CW,     h:CH-hdrH};
+      };
+      const old=contentArea(oldPos,oldNavW);
+      const nw=contentArea(pos,newNavW);
+      // Nuevo elemento nav (para "none": franja delgada al borde izquierdo como indicador visual)
+      const navPatch=
+        pos==="left"  ?{x:0,         y:hdrH, w:newNavW,   h:CH-hdrH}:
+        pos==="right" ?{x:CW-newNavW,y:hdrH, w:newNavW,   h:CH-hdrH}:
+        pos==="top"   ?{x:0,         y:hdrH, w:CW,        h:NAV_TOP_H}:
+        /*none*/       {x:0,         y:hdrH, w:6,         h:CH-hdrH};
+      return cur.map(e=>{
+        if(e.type==="nav")    return navPatch?{...e,...navPatch}:e;
+        if(e.type==="header") return e; // header no se mueve
+        // Remap proporcional del elemento al nuevo área de contenido
+        if(old.w<=0||old.h<=0) return e;
+        const rx=nw.w/old.w, ry=nw.h/old.h;
+        return{
+          ...e,
+          x:Math.max(nw.x, Math.round(nw.x+(e.x-old.x)*rx)),
+          y:Math.max(nw.y, Math.round(nw.y+(e.y-old.y)*ry)),
+          w:Math.max(MIN_W,Math.round(e.w*rx)),
+          h:Math.max(MIN_H,Math.round(e.h*ry)),
+        };
+      });
+    });
+  },[navCfg.position,navCfg.width,CW,CH]);
+
+  // ── RESTORE: recuperar estado al montar (una sola vez) ──
+  useEffect(()=>{
+    try{
+      const raw=localStorage.getItem('pbi_autosave');
+      if(!raw)return;
+      const s=JSON.parse(raw);
+      if(!s||!Array.isArray(s.els)||s.els.length===0)return;
+      // Filtrar elementos con estructura mínima válida
+      const validEls=s.els.filter(e=>
+        e&&typeof e.id==='number'&&typeof e.type==='string'&&
+        typeof e.x==='number'&&typeof e.y==='number'
+      );
+      if(!validEls.length)return;
+      const size=CANVAS_SIZES.find(x=>x.id===s.canvasSizeId)||CANVAS_SIZES[0];
+      suppressResize.current=true;
+      setEls(validEls);
+      if(s.ct&&typeof s.ct==='object')setCt(prev=>({...prev,...s.ct}));
+      if(s.hdrCfg&&typeof s.hdrCfg==='object')setHdrCfg(prev=>({...prev,...s.hdrCfg}));
+      if(s.navCfg&&typeof s.navCfg==='object'){
+        setNavCfg(n=>({...n,...s.navCfg,
+          colors:{...NAV_DEFAULT.colors,...(s.navCfg.colors||{})},
+          pages:s.navCfg.pages||n.pages||NAV_DEFAULT.pages}));
+        // Evita que el sync-effect remapee un diseño ya posicionado correctamente
+        prevNavLayout.current={position:s.navCfg.position||NAV_DEFAULT.position,width:s.navCfg.width||NAV_DEFAULT.width};
+      }
+      setCanvasSize(size);
+      if(typeof s.customW==='number')setCustomW(s.customW);
+      if(typeof s.customH==='number')setCustomH(s.customH);
+      const validELIds=validEls.map(e=>e.id).filter(id=>typeof id==='number'&&isFinite(id)&&id>0);
+      setNextId(Math.max(...validELIds,49)+1);
+      const ts=s.savedAt?new Date(s.savedAt):new Date();
+      setAutoSaveTs(ts);
+      const ago=Math.round((Date.now()-ts.getTime())/60000);
+      const agoStr=ago<1?"hace un momento":ago===1?"hace 1 min":`hace ${ago} min`;
+      setMsgs(m=>[...m,{role:"ai",text:`↩️ Recuperé tu último trabajo (${agoStr}). Puedes continuar donde lo dejaste. Usa Ctrl+Z si prefieres empezar de cero.`}]);
+    }catch(e){
+      // Estado corrupto — limpiar para que no bloquee futuros arranques
+      try{localStorage.removeItem('pbi_autosave');}catch(_){}
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  // ── AUTO-SAVE: 3s después del último cambio ──
+  useEffect(()=>{
+    if(els.length===0)return;
+    if(autoSaveTimer.current)clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current=setTimeout(()=>{
+      try{
+        const state={els,ct,hdrCfg,navCfg,
+          canvasSizeId:canvasSize.id,customW,customH,
+          savedAt:new Date().toISOString(),v:1};
+        localStorage.setItem('pbi_autosave',JSON.stringify(state));
+        setAutoSaveTs(new Date());
+      }catch(e){
+        // localStorage lleno o deshabilitado — avisar al usuario (una sola vez)
+        setMsgs(m=>{
+          const lastMsg=m[m.length-1];
+          const warn='⚠️ No se pudo guardar automáticamente (almacenamiento del navegador lleno). Usa "Diseños > Guardar" para no perder tu trabajo.';
+          if(lastMsg?.text===warn)return m; // no duplicar
+          return[...m,{role:"ai",text:warn}];
+        });
+      }
+    },3000);
+    return()=>clearTimeout(autoSaveTimer.current);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[els,ct,hdrCfg,navCfg,canvasSize,customW,customH]);
 
   // Cargar temas guardados desde storage al iniciar
   useEffect(()=>{
@@ -1361,30 +1862,39 @@ export default function PBIDesigner(){
   };
 
   // ── VERSIONADO DE DISEÑOS (proyectos guardados) ──
+  const LS_DESIGNS="pbi_saved_designs";
   useEffect(()=>{
-    (async()=>{
-      try{
-        const r=await window.storage?.get("savedDesigns");
-        if(r?.value)setSavedDesigns(JSON.parse(r.value));
-      }catch(e){}
-    })();
+    try{
+      const raw=localStorage.getItem(LS_DESIGNS);
+      if(raw)setSavedDesigns(JSON.parse(raw));
+    }catch(e){}
   },[]);
+
   const saveDesign=async(name)=>{
     const design={
       id:"d"+Date.now(),
       name:name||"Diseño "+(savedDesigns.length+1),
-      date:new Date().toLocaleDateString(),
+      date:new Date().toLocaleDateString("es"),
       els:els.map(e=>({...e})),
       mobileEls:mobileEls?mobileEls.map(e=>({...e})):null,
       ct:{...ct},navCfg:JSON.parse(JSON.stringify(navCfg)),hdrCfg:{...hdrCfg},
-      canvasSizeId:canvasSize.id,
-      customW,customH, // guardar dimensiones custom
-      count:els.length,
+      canvasSizeId:canvasSize.id,customW,customH,count:els.length,
+      source:"local",
     };
-    const updated=[design,...savedDesigns].slice(0,30); // máx 30
+    const updated=[design,...savedDesigns].slice(0,30);
     setSavedDesigns(updated);
-    try{await window.storage?.set("savedDesigns",JSON.stringify(updated),false);}catch(e){}
+    try{localStorage.setItem(LS_DESIGNS,JSON.stringify(updated));}catch(e){}
+    // Sincronizar a Supabase en background
+    const token=localStorage.getItem("token");
+    if(token){
+      fetch("http://localhost:3001/api/save-design",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","Authorization":`Bearer ${token}`},
+        body:JSON.stringify({name:design.name,layout:{els:design.els,ct:design.ct,navCfg:design.navCfg,hdrCfg:design.hdrCfg,canvasSizeId:design.canvasSizeId}}),
+      }).catch(()=>{});
+    }
   };
+
   const loadDesign=(d)=>{
     suppressResize.current=true;
     const s=CANVAS_SIZES.find(x=>x.id===d.canvasSizeId);if(s)setCanvasSize(s);
@@ -1392,24 +1902,53 @@ export default function PBIDesigner(){
       setCustomW(d.customW);setCustomH(d.customH);setDraftW(d.customW);setDraftH(d.customH);
     }
     setCt({...CANVAS_DEFAULT,...d.ct});
-    setNavCfg(d.navCfg);setHdrCfg(d.hdrCfg);
+    const loadedNav=d.navCfg||NAV_DEFAULT;
+    setNavCfg(loadedNav);
+    // Evita que el sync-effect remapee un diseño ya posicionado correctamente
+    prevNavLayout.current={position:loadedNav.position||NAV_DEFAULT.position,width:loadedNav.width||NAV_DEFAULT.width};
+    setHdrCfg(d.hdrCfg||{show:false,title:"My Report",subtitle:"",height:58,bgColor:""});
     setEls(d.els.map(e=>({...e})));pushHistory(d.els);
     setMobileEls(d.mobileEls||null);
+    const loadIds=d.els.map(e=>e.id).filter(id=>typeof id==='number'&&isFinite(id)&&id>0);
+    setNextId(Math.max(...loadIds,49)+1);
     setViewMode("desktop");setSel(null);setVersionsModal(false);
-    setMsgs(m=>[...m,{role:"ai",text:`📂 Diseño "${d.name}" cargado (${d.count} elementos).`}]);
+    setMsgs(m=>[...m,{role:"ai",text:`📂 Diseño "${d.name}" cargado (${d.count||d.els?.length||"?"} elementos).`}]);
   };
+
   const deleteDesign=async(id)=>{
     const updated=savedDesigns.filter(d=>d.id!==id);
     setSavedDesigns(updated);
-    try{await window.storage?.set("savedDesigns",JSON.stringify(updated),false);}catch(e){}
+    try{localStorage.setItem(LS_DESIGNS,JSON.stringify(updated));}catch(e){}
+  };
+
+  const fetchCloudDesigns=async()=>{
+    const token=localStorage.getItem("token");
+    if(!token)return null;
+    try{
+      const r=await fetch("http://localhost:3001/api/user-designs",{
+        headers:{"Authorization":`Bearer ${token}`},
+      });
+      if(!r.ok)return null;
+      const data=await r.json();
+      return(data.designs||[]).map((d,i)=>({
+        id:"cloud_"+i+"_"+Date.now(),
+        name:d.layout?.name||`Diseño nube ${i+1}`,
+        date:new Date(d.created_at).toLocaleDateString("es"),
+        els:d.layout?.els||[],
+        ct:d.layout?.ct||{},
+        navCfg:d.layout?.navCfg||NAV_DEFAULT,
+        hdrCfg:d.layout?.hdrCfg||{show:false,title:"",subtitle:"",height:58,bgColor:""},
+        canvasSizeId:d.layout?.canvasSizeId||"960x580",
+        count:(d.layout?.els||[]).length,
+        source:"cloud",
+      }));
+    }catch(e){return null;}
   };
 
   const[tab,setTab]=useState("elements");
   const[panelW,setPanelW]=useState(170); // ancho del panel izquierdo, redimensionable
   const[leftOpen,setLeftOpen]=useState(true); // mostrar/ocultar panel izquierdo
   const[aiW,setAiW]=useState(292); // ancho del panel derecho IA, redimensionable
-  const[navCfg,setNavCfg]=useState({...NAV_DEFAULT});
-  const[hdrCfg,setHdrCfg]=useState({show:false,title:"My Report",subtitle:"Business Intelligence Dashboard",height:58,bgColor:""});
   const[navBuilderTab,setNavBuilderTab]=useState("config"); // config|preview|code
   const[atts,setAtts]=useState([]);
   const[auditResult,setAuditResult]=useState(null); // resultado del último audit
@@ -1418,6 +1957,7 @@ export default function PBIDesigner(){
   const canvasRef=useRef(null);
   const chatEndRef=useRef(null);
   const fileRef=useRef(null);
+  const imgFileRef=useRef(null); // solo imágenes — para importar capturas de dashboard
   const selEl=els.find(e=>e.id===sel);
 
   useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
@@ -1501,10 +2041,16 @@ export default function PBIDesigner(){
     setCustomW(w);setCustomH(h);
   };
 
-  // ── HISTORY ──
+  // ── HISTORY — limitado a 50 entradas para evitar memory leak ──
+  const HISTORY_LIMIT=50;
   const pushHistory=useCallback(newEls=>{
-    setHistory(h=>{const n=h.slice(0,histIdx+1);n.push([...newEls]);return n;});
-    setHistIdx(i=>i+1);
+    setHistory(h=>{
+      const trimmed=h.slice(0,histIdx+1);
+      trimmed.push([...newEls]);
+      // Descartar entradas antiguas si supera el límite
+      return trimmed.length>HISTORY_LIMIT?trimmed.slice(trimmed.length-HISTORY_LIMIT):trimmed;
+    });
+    setHistIdx(i=>Math.min(i+1,HISTORY_LIMIT-1));
   },[histIdx]);
   const undo=useCallback(()=>{if(histIdx>0){const i=histIdx-1;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
   const redo=useCallback(()=>{if(histIdx<history.length-1){const i=histIdx+1;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
@@ -1566,9 +2112,27 @@ export default function PBIDesigner(){
 
   // ── FILES ──
   const handleFiles=async files=>{
-    const r=[];for(const f of files){try{r.push(await readFile(f));}catch(e){}}
+    const r=[];
+    const errs=[];
+    for(const f of files){
+      try{r.push(await readFile(f));}
+      catch(e){errs.push(e.message||`Error leyendo ${f.name}`);}
+    }
+    if(errs.length){
+      setMsgs(m=>[...m,{role:"ai",text:`⚠️ ${errs.join('\n')}`}]);
+    }
     setAtts(a=>[...a,...r]);
-    if(r.length)setMsgs(m=>[...m,{role:"ai",text:`📎 ${r.length} archivo(s) listo(s): ${r.map(x=>x.name).join(", ")}.\nDescribe cómo usarlo — ej: «usa estos colores» o «recrea este layout».`}]);
+    if(!r.length)return;
+    const descs=r.map(x=>{
+      if(x.meta){
+        const{rows,numCols,catCols}=x.meta;
+        const m=numCols.slice(0,3).join(', ')||'—';
+        const c=catCols.slice(0,3).join(', ')||'—';
+        return `📊 ${x.name} — ${rows} filas\n   Métricas: ${m}\n   Dimensiones: ${c}`;
+      }
+      return x.type==='image'?`🖼 ${x.name} (imagen lista para analizar)`:`📄 ${x.name}`;
+    });
+    setMsgs(m=>[...m,{role:"ai",text:`${descs.join('\n')}\n\nEscribe qué dashboard quieres — usaré las columnas reales para los títulos y métricas.`}]);
   };
   const handlePaste=e=>{
     const imgs=[...e.clipboardData?.items||[]].filter(i=>i.type.startsWith("image/")).map(i=>i.getAsFile()).filter(Boolean);
@@ -1585,10 +2149,12 @@ export default function PBIDesigner(){
     const visibleText=useOverride?(opts.visible||opts.prompt):text;
     if(!useOverride)setInput("");
     const userContent=[];
+    const hasTabular=atts.some(a=>a.type==="text"&&a.meta);
     atts.forEach(a=>{
       if(a.type==="image")userContent.push({type:"image",source:{type:"base64",media_type:a.mediaType,data:a.base64}});
-      else userContent.push({type:"text",text:`[File: ${a.name}]\n${a.content?.slice(0,4000)||""}`});
+      else userContent.push({type:"text",text:`[DATOS DEL ARCHIVO: ${a.name}]\n${a.content?.slice(0,5000)||""}`});
     });
+    if(hasTabular)userContent.push({type:"text",text:`INSTRUCCIÓN: Usa los nombres de columnas del archivo como labels de los elementos del dashboard. Las columnas numéricas → KPIs y gráficos. Las columnas categóricas → slicers y dimensiones de agrupación. Deriva el título del reporte del nombre del archivo o dominio de los datos.`});
     if(text)userContent.push({type:"text",text});
     setMsgs(m=>[...m,{role:"user",text:[atts.map(a=>`📎 ${a.name}`).join(" "),visibleText].filter(Boolean).join("\n"),atts:[...atts]}]);
     setAtts([]);setLoading(true);
@@ -1633,8 +2199,8 @@ export default function PBIDesigner(){
           if(viewMode!=="mobile")setViewMode("mobile");
         }
         setEls(newEls);pushHistory(newEls);
-        const validIds=layout.elements.map(e=>e.id).filter(id=>typeof id==="number"&&!isNaN(id));
-        setNextId(Math.max(...(validIds.length?validIds:[0]),nextId)+1);setSel(null);
+        const validIds=layout.elements.map(e=>e.id).filter(id=>typeof id==="number"&&isFinite(id)&&id>0);
+        setNextId(Math.max(...(validIds.length?validIds:[0]),nextId,49)+1);setSel(null);
       }
       if(layout.header)setHdrCfg(h=>({...h,...layout.header}));
       if(layout.navConfig)setNavCfg(n=>({...n,...layout.navConfig,
@@ -1734,6 +2300,8 @@ export default function PBIDesigner(){
         return{...e,x:newX,y:newY,w:Math.max(MIN_W,Math.round(e.w*crx)),h:Math.max(MIN_H,Math.round(e.h*cry))};
       });
     }
+    // Evitar que el sync-effect remapee elementos ya posicionados para el nav de la plantilla
+    prevNavLayout.current={position:p.nav.position||NAV_DEFAULT.position,width:p.nav.width||NAV_DEFAULT.width};
     setEls(newEls);pushHistory(newEls);setSel(null);
     const sizeNote=(CW!==BASE_W||CH!==BASE_H)?` (adaptada a ${CW}×${CH})`:"";
     setMsgs(m=>[...m,{role:"ai",text:`✅ Plantilla "${p.header.title}" cargada — ${p.els.length} elementos${sizeNote}. Pídeme ajustes o cámbiale los colores cuando quieras.`}]);
@@ -1747,53 +2315,57 @@ export default function PBIDesigner(){
   const IS={background:A.surface,border:`1px solid ${A.border2}`,color:A.text,borderRadius:5,padding:"4px 8px",fontSize:9,fontFamily:"monospace",outline:"none",width:"100%",boxSizing:"border-box"};
   const LS={fontSize:8,color:A.textMuted,fontFamily:"monospace",letterSpacing:0.4,marginBottom:3,display:"block",textTransform:"uppercase"};
 
-  return(
+  return !user ? <LoginScreen onLogin={handleLogin}/> : (
     <div style={{width:"100vw",height:"100vh",background:A.bg,display:"flex",flexDirection:"column",fontFamily:"'Segoe UI',system-ui,sans-serif",color:A.text,position:"relative"}}>
 
       {/* ══ TOPBAR ══════════════════════════════════════════════════ */}
-      <div style={{minHeight:48,background:A.topbar,borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",padding:"4px 12px",gap:6,zIndex:1000,flexShrink:0,boxShadow:`0 1px 3px ${rgba(A.accent,0.07)}`,flexWrap:"wrap",rowGap:4}}>
-        {/* Logo */}
-        <div style={{display:"flex",alignItems:"center",gap:8,marginRight:6}}>
-          <div style={{width:26,height:26,borderRadius:6,background:`linear-gradient(135deg,${A.accent},${adjHex(A.accent,0.75)})`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontWeight:900,flexShrink:0}}>⬡</div>
+      <div style={{minHeight:54,background:A.topbar,borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",padding:"0 14px",gap:6,zIndex:1000,flexShrink:0,boxShadow:`0 2px 20px ${rgba(A.accent,0.08)},0 1px 0 ${A.border}`,flexWrap:"wrap",rowGap:4}}>
+
+        {/* ─── Logo ───────────────────────────────────────────────── */}
+        <div style={{display:"flex",alignItems:"center",gap:10,marginRight:4,flexShrink:0,padding:"2px 0"}}>
+          <div style={{width:34,height:34,borderRadius:10,background:`linear-gradient(135deg,${A.accent} 0%,${adjHex(A.accent,0.65)} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,color:"#fff",fontWeight:900,flexShrink:0,boxShadow:`0 4px 16px ${rgba(A.accent,0.5)},0 0 0 1px ${rgba(A.accent,0.2)}`}}>⬡</div>
           <div>
-            <div style={{fontSize:11,fontWeight:800,color:A.text,lineHeight:1.1}}>PBI Designer</div>
-            <div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:0.8}}>v2.0 · AI</div>
+            <div style={{fontSize:13,fontWeight:800,color:A.text,lineHeight:1.1,letterSpacing:-0.4}}>PBI Designer</div>
+            <div style={{fontSize:7,color:A.textLight,fontFamily:"monospace",letterSpacing:1.2,marginTop:2,textTransform:"uppercase"}}>v2.0 · AI-Powered</div>
           </div>
         </div>
-        <div style={{width:1,height:22,background:A.border}}/>
 
-        {/* Temas de interfaz */}
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
-          <span style={{fontSize:8,color:A.textMuted,fontFamily:"monospace",flexShrink:0}}>UI</span>
+        <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
+
+        {/* ─── Tema UI ────────────────────────────────────────────── */}
+        <div style={{display:"flex",alignItems:"center",gap:3,background:A.surface,borderRadius:8,padding:"3px 7px",border:`1px solid ${A.border}`,flexShrink:0}}>
+          <span style={{fontSize:7,color:A.textMuted,fontFamily:"monospace",letterSpacing:0.8,textTransform:"uppercase",marginRight:2}}>UI</span>
           {Object.values(APP_THEMES).map(t=>(
             <button key={t.id} onClick={()=>setAppThemeId(t.id)} title={t.name}
-              style={{width:24,height:24,borderRadius:5,background:t.surface,border:`2px solid ${appThemeId===t.id?A.accent:A.border}`,cursor:"pointer",fontSize:12,transition:"all 0.15s",transform:appThemeId===t.id?"scale(1.2)":"scale(1)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              style={{width:23,height:23,borderRadius:6,background:appThemeId===t.id?A.accentBg:t.surface,border:`2px solid ${appThemeId===t.id?A.accent:A.border}`,cursor:"pointer",fontSize:11,transition:"all 0.15s",transform:appThemeId===t.id?"scale(1.18)":"scale(1)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:appThemeId===t.id?`0 2px 8px ${rgba(A.accent,0.3)}`:"none"}}>
               {t.icon}
             </button>
           ))}
         </div>
-        <div style={{width:1,height:22,background:A.border}}/>
 
-        {/* Zoom */}
-        <div style={{display:"flex",alignItems:"center",gap:3}}>
-          <button onClick={()=>setZoom(z=>+(Math.max(0.3,z-0.1)).toFixed(1))} style={B({width:22,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14})}>−</button>
-          <span style={{fontSize:9,color:A.textMuted,fontFamily:"monospace",width:34,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
-          <button onClick={()=>setZoom(z=>+(Math.min(2,z+0.1)).toFixed(1))} style={B({width:22,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14})}>+</button>
+        <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
+
+        {/* ─── Zoom ───────────────────────────────────────────────── */}
+        <div style={{display:"flex",alignItems:"center",gap:1,background:A.surface,borderRadius:8,padding:"2px 3px",border:`1px solid ${A.border}`,flexShrink:0}}>
+          <button onClick={()=>setZoom(z=>+(Math.max(0.3,z-0.1)).toFixed(1))} style={{...B({width:24,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}),border:"none",borderRadius:6}}>−</button>
+          <span style={{fontSize:9,color:A.textMuted,fontFamily:"monospace",width:38,textAlign:"center",fontWeight:600}}>{Math.round(zoom*100)}%</span>
+          <button onClick={()=>setZoom(z=>+(Math.min(2,z+0.1)).toFixed(1))} style={{...B({width:24,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}),border:"none",borderRadius:6}}>+</button>
+          <div style={{width:1,height:14,background:A.border,margin:"0 2px"}}/>
           <button onClick={()=>{
-            // FIT dinámico según tamaño de canvas y viewport disponible
             const vw=window.innerWidth-panelW-(aiOpen?aiW:0)-80;
-            const vh=window.innerHeight-48-22-(resizePrompt?40:0)-80;
+            const vh=window.innerHeight-54-22-(resizePrompt?40:0)-80;
             setZoom(+Math.max(0.1,Math.min(vw/CW,vh/(CH+26),1)).toFixed(2));
-          }} style={B({fontSize:8,padding:"0 6px",height:22})}>FIT</button>
+          }} style={{...B({fontSize:8,padding:"0 7px",height:24}),border:"none",borderRadius:6,fontWeight:700}}>FIT</button>
         </div>
-        <div style={{width:1,height:22,background:A.border}}/>
 
-        {/* Toggle Vista Normal / Móvil — como en Power BI real */}
-        <div style={{display:"flex",alignItems:"center",background:A.bg,borderRadius:6,padding:2,gap:2,border:`1px solid ${A.border2}`,flexShrink:0}}>
+        <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
+
+        {/* ─── Vista Normal / Móvil ───────────────────────────────── */}
+        <div style={{display:"flex",alignItems:"center",background:A.surface,borderRadius:8,padding:2,gap:1,border:`1px solid ${A.border}`,flexShrink:0}}>
           <button onClick={switchToDesktop} title="Vista normal (escritorio)"
-            style={{padding:"3px 9px",borderRadius:4,border:"none",cursor:"pointer",fontSize:9,fontWeight:viewMode==="desktop"?700:400,
+            style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:9,fontWeight:viewMode==="desktop"?700:500,
               background:viewMode==="desktop"?A.accent:"transparent",color:viewMode==="desktop"?"#fff":A.textMuted,
-              display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+              display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",whiteSpace:"nowrap",boxShadow:viewMode==="desktop"?`0 2px 8px ${rgba(A.accent,0.35)}`:"none"}}>
             🖥️ Normal
           </button>
           <button onClick={()=>{
@@ -1803,28 +2375,27 @@ export default function PBIDesigner(){
               }
               switchToMobile();
             }} title={mobileEls?"Ver diseño móvil":"Generar y ver diseño móvil"}
-            style={{padding:"3px 9px",borderRadius:4,border:"none",cursor:"pointer",fontSize:9,fontWeight:viewMode==="mobile"?700:400,
+            style={{padding:"4px 10px",borderRadius:6,border:"none",cursor:"pointer",fontSize:9,fontWeight:viewMode==="mobile"?700:500,
               background:viewMode==="mobile"?A.accent:"transparent",color:viewMode==="mobile"?"#fff":A.textMuted,
-              display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",whiteSpace:"nowrap"}}>
+              display:"flex",alignItems:"center",gap:4,transition:"all 0.15s",whiteSpace:"nowrap",boxShadow:viewMode==="mobile"?`0 2px 8px ${rgba(A.accent,0.35)}`:"none"}}>
             📱 Móvil{mobileEls?" ✓":""}
           </button>
         </div>
         {viewMode==="mobile"&&(
-          <button onClick={regenerateMobile} title="Regenerar vista móvil desde el diseño normal"
-            style={B({fontSize:11,padding:"0 7px",height:22,flexShrink:0})}>🔄</button>
+          <button onClick={regenerateMobile} title="Regenerar vista móvil"
+            style={{...B({fontSize:11,padding:"0 8px",height:26,flexShrink:0}),borderRadius:7}}>🔄</button>
         )}
 
-        <div style={{width:1,height:22,background:A.border}}/>
+        <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
 
-        {/* Selector de tamaño de canvas */}
-        <div style={{display:"flex",alignItems:"center",gap:5}}>
-          <span style={{fontSize:8,color:A.textMuted,fontFamily:"monospace",flexShrink:0}}>CANVAS</span>
+        {/* ─── Canvas ─────────────────────────────────────────────── */}
+        <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+          <span style={{fontSize:7,color:A.textMuted,fontFamily:"monospace",letterSpacing:0.8,textTransform:"uppercase"}}>Canvas</span>
           {viewMode==="mobile"?(
-            // En móvil: tamaño bloqueado al estándar Power BI Mobile (no editable)
             <div title="En vista móvil el ancho es fijo (900px, estándar Power BI Mobile). La altura se ajusta al contenido."
               style={{display:"flex",alignItems:"center",gap:5,fontSize:8,fontFamily:"monospace",
                 background:rgba(A.accent,0.08),color:A.accent,border:`1px solid ${rgba(A.accent,0.3)}`,
-                borderRadius:5,padding:"3px 8px",fontWeight:700}}>
+                borderRadius:7,padding:"3px 9px",fontWeight:700}}>
               🔒 900×{CH} · Móvil
             </div>
           ):(<>
@@ -1832,7 +2403,6 @@ export default function PBIDesigner(){
             onChange={e=>{
               const s=CANVAS_SIZES.find(x=>x.id===e.target.value);
               if(!s)return;
-              // Capturar el tamaño actual ANTES de cambiar (evita closures obsoletos)
               const curW=CW, curH=CH;
               if(s.id==="custom"){
                 setCustomW(curW);setCustomH(curH);setDraftW(curW);setDraftH(curH);
@@ -1840,10 +2410,9 @@ export default function PBIDesigner(){
                 return;
               }
               const newW=s.w, newH=s.h;
-              // Cambiar tamaño — el useEffect detectará el cambio y mostrará el banner de confirmación
               setCanvasSize(s);
             }}
-            style={{fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border2}`,borderRadius:5,padding:"2px 4px",cursor:"pointer"}}>
+            style={{fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border}`,borderRadius:7,padding:"3px 6px",cursor:"pointer"}}>
             {CANVAS_SIZES.map(s=><option key={s.id} value={s.id}>{s.label}</option>)}
           </select></>)}
           {viewMode!=="mobile"&&canvasSize.id==="custom"&&<>
@@ -1855,7 +2424,7 @@ export default function PBIDesigner(){
               <input type="number" value={draftW} onChange={e=>setDraftW(+e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter")applyCustomSize();}}
                 title="Ancho (px)" min={200} max={4000}
-                style={{width:62,fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border2}`,borderRadius:4,padding:"2px 4px 2px 20px",textAlign:"center"}}/>
+                style={{width:62,fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border}`,borderRadius:5,padding:"2px 4px 2px 20px",textAlign:"center"}}/>
             </div>
             <span style={{fontSize:8,color:A.textMuted}}>×</span>
             <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
@@ -1866,57 +2435,116 @@ export default function PBIDesigner(){
               <input type="number" value={draftH} onChange={e=>setDraftH(+e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter")applyCustomSize();}}
                 title="Alto (px)" min={200} max={4000}
-                style={{width:62,fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border2}`,borderRadius:4,padding:"2px 4px 2px 22px",textAlign:"center"}}/>
+                style={{width:62,fontSize:8,fontFamily:"monospace",background:A.surface,color:A.text,border:`1px solid ${A.border}`,borderRadius:5,padding:"2px 4px 2px 22px",textAlign:"center"}}/>
             </div>
             <button onClick={applyCustomSize}
               disabled={draftW===customW&&draftH===customH}
-              title="Aplicar tamaño personalizado"
-              style={{fontSize:8,fontWeight:700,padding:"3px 9px",borderRadius:5,border:"none",cursor:(draftW===customW&&draftH===customH)?"default":"pointer",
+              style={{fontSize:8,fontWeight:700,padding:"3px 9px",borderRadius:6,border:"none",cursor:(draftW===customW&&draftH===customH)?"default":"pointer",
                 background:(draftW===customW&&draftH===customH)?A.border:A.accent,
-                color:(draftW===customW&&draftH===customH)?A.textLight:"#fff",whiteSpace:"nowrap"}}>
+                color:(draftW===customW&&draftH===customH)?A.textLight:"#fff"}}>
               Aplicar
             </button>
           </>}
-          <span style={{fontSize:7,color:A.textLight,fontFamily:"monospace"}}>{CW}×{CH}</span>
+          <span style={{fontSize:7,color:A.textLight,fontFamily:"monospace",background:A.surface,border:`1px solid ${A.border}`,padding:"2px 6px",borderRadius:5}}>{CW}×{CH}</span>
         </div>
-        <div style={{width:1,height:22,background:A.border}}/>
 
-        {/* Grid / Snap */}
-        {[["⊡",showGrid,"Grid",()=>setShowGrid(x=>!x)],["⊞",snapGrid,"Snap",()=>setSnapGrid(x=>!x)]].map(([ic,on,tip,fn])=>(
-          <button key={tip} onClick={fn} title={`${tip} ${on?"ON":"OFF"}`}
-            style={B({width:26,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,background:on?A.accentBg:A.surface,borderColor:on?A.accentLight:A.border2,color:on?A.accent:A.textLight})}>{ic}</button>
-        ))}
-        <div style={{width:1,height:22,background:A.border}}/>
+        <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
 
-        {/* Undo / Redo */}
-        <button onClick={undo} disabled={histIdx===0} title="Ctrl+Z" style={B({width:24,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:histIdx===0?0.3:1})}>↩</button>
-        <button onClick={redo} disabled={histIdx>=history.length-1} title="Ctrl+Y" style={B({width:24,height:22,padding:0,display:"flex",alignItems:"center",justifyContent:"center",opacity:histIdx>=history.length-1?0.3:1})}>↪</button>
+        {/* ─── Grid / Snap ────────────────────────────────────────── */}
+        <div style={{display:"flex",alignItems:"center",gap:2,background:A.surface,borderRadius:8,padding:"2px 4px",border:`1px solid ${A.border}`,flexShrink:0}}>
+          {[["⊡",showGrid,"Grid",()=>setShowGrid(x=>!x)],["⊞",snapGrid,"Snap",()=>setSnapGrid(x=>!x)]].map(([ic,on,tip,fn])=>(
+            <button key={tip} onClick={fn} title={`${tip} ${on?"ON":"OFF"}`}
+              style={{width:26,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,border:"none",borderRadius:6,cursor:"pointer",transition:"all 0.15s",background:on?A.accentBg:"transparent",color:on?A.accent:A.textLight,boxShadow:on?`0 1px 6px ${rgba(A.accent,0.25)}`:"none"}}>{ic}</button>
+          ))}
+        </div>
 
-        <span style={{fontSize:8,color:A.textLight,fontFamily:"monospace"}}>{els.length} elem</span>
-        {dragStatus&&<span style={{fontSize:8,color:A.accent,background:A.accentBg,padding:"2px 7px",borderRadius:4,fontFamily:"monospace"}}>
+        <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
+
+        {/* ─── Undo / Redo + info ─────────────────────────────────── */}
+        <div style={{display:"flex",alignItems:"center",gap:2,flexShrink:0}}>
+          <button onClick={undo} disabled={histIdx===0} title="Deshacer (Ctrl+Z)"
+            style={{...B({width:26,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,borderRadius:7}),opacity:histIdx===0?0.28:1}}>↩</button>
+          <button onClick={redo} disabled={histIdx>=history.length-1} title="Rehacer (Ctrl+Y)"
+            style={{...B({width:26,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,borderRadius:7}),opacity:histIdx>=history.length-1?0.28:1}}>↪</button>
+          <span style={{fontSize:8,color:A.textLight,fontFamily:"monospace",background:A.surface,border:`1px solid ${A.border}`,padding:"2px 7px",borderRadius:5,marginLeft:2,flexShrink:0}}>{els.length} elem</span>
+        </div>
+
+        {dragStatus&&<span style={{fontSize:8,color:A.accent,background:A.accentBg,padding:"2px 8px",borderRadius:5,fontFamily:"monospace",border:`1px solid ${rgba(A.accent,0.2)}`,flexShrink:0}}>
           x:{dragStatus.x??""} y:{dragStatus.y??""}{dragStatus.w?` · ${dragStatus.w}×${dragStatus.h}`:""}
         </span>}
 
-        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
-          {sel&&<button onClick={()=>{setEls(a=>{const n=a.filter(e=>e.id!==sel);pushHistory(n);return n;});setSel(null);}} style={B({color:A.danger,borderColor:rgba(A.danger,0.3),background:rgba(A.danger,0.06)})}>🗑 Delete</button>}
-          {/* Nuevo lienzo */}
+        {/* ─── Acciones principales ───────────────────────────────── */}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+          {sel&&<button onClick={()=>{setEls(a=>{const n=a.filter(e=>e.id!==sel);pushHistory(n);return n;});setSel(null);}}
+            style={{padding:"5px 10px",borderRadius:7,background:rgba(A.danger,0.07),border:`1px solid ${rgba(A.danger,0.3)}`,color:A.danger,fontSize:9,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background=rgba(A.danger,0.14);}}
+            onMouseLeave={e=>{e.currentTarget.style.background=rgba(A.danger,0.07);}}>🗑 Eliminar</button>}
+
           <button onClick={()=>{
-            if(els.length===0){
-              setMsgs(m=>[...m,{role:"ai",text:"El lienzo ya está vacío. Describe tu nuevo dashboard. 🆕"}]);
-              return;
-            }
+            if(els.length===0){setMsgs(m=>[...m,{role:"ai",text:"El lienzo ya está vacío. Describe tu nuevo dashboard. 🆕"}]);return;}
             setConfirmNew(true);
-          }} title="Nuevo lienzo (limpiar todo)"
-            style={{padding:"5px 11px",borderRadius:6,background:A.accentBg,border:`1px solid ${A.accentLight}`,
-              color:A.accent,fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          }} title="Nuevo lienzo"
+            style={{padding:"6px 13px",borderRadius:7,background:A.accentBg,border:`1px solid ${A.accentLight}`,color:A.accent,fontSize:9,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background=rgba(A.accent,0.15);e.currentTarget.style.borderColor=A.accent;}}
+            onMouseLeave={e=>{e.currentTarget.style.background=A.accentBg;e.currentTarget.style.borderColor=A.accentLight;}}>
             📊 Nuevo
           </button>
-          <button onClick={()=>setVersionsModal(true)} title="Guardar y cargar diseños"
-            style={B({padding:"6px 11px",fontSize:10,display:"flex",alignItems:"center",gap:5,flexShrink:0})}>📂 Diseños</button>
-          <button onClick={()=>setThemeModal(true)} title="Biblioteca de temas de marca"
-            style={B({padding:"6px 11px",fontSize:10,display:"flex",alignItems:"center",gap:5,flexShrink:0})}>🎨 Temas</button>
-          <button onClick={()=>setExportModal(true)} style={PB({boxShadow:`0 3px 10px ${rgba(A.accent,0.35)}`})}>↗ Exportar PBI</button>
-          <button onClick={()=>setAiOpen(o=>!o)} style={B({color:A.accent,borderColor:A.accentLight,background:A.accentBg})}>{aiOpen?"◀ Ocultar IA":"▶ Chat IA"}</button>
+
+          <button onClick={()=>setVersionsModal(true)} title="Diseños guardados"
+            style={{...B({padding:"6px 12px",fontSize:9,display:"flex",alignItems:"center",gap:4,flexShrink:0,borderRadius:7}),transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.color=A.textMuted;e.currentTarget.style.background=A.surface;}}>
+            📂 Diseños
+          </button>
+
+          <button onClick={()=>setThemeModal(true)} title="Temas de marca"
+            style={{...B({padding:"6px 12px",fontSize:9,display:"flex",alignItems:"center",gap:4,flexShrink:0,borderRadius:7}),transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.color=A.textMuted;e.currentTarget.style.background=A.surface;}}>
+            🎨 Temas
+          </button>
+
+          <button onClick={()=>setExportModal(true)}
+            style={{padding:"6px 15px",borderRadius:7,background:`linear-gradient(135deg,${A.accent} 0%,${adjHex(A.accent,0.72)} 100%)`,border:"none",color:"#fff",fontSize:9,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,flexShrink:0,boxShadow:`0 3px 14px ${rgba(A.accent,0.42)}`,transition:"all 0.2s",letterSpacing:0.2}}
+            onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 5px 22px ${rgba(A.accent,0.6)}`;e.currentTarget.style.transform="translateY(-1px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.boxShadow=`0 3px 14px ${rgba(A.accent,0.42)}`;e.currentTarget.style.transform="translateY(0)";}}>
+            ↗ Exportar PBI
+          </button>
+
+          <button onClick={()=>setAiOpen(o=>!o)}
+            style={{padding:"6px 12px",borderRadius:7,background:aiOpen?A.accentBg:"transparent",border:`1px solid ${aiOpen?A.accentLight:A.border2}`,color:aiOpen?A.accent:A.textMuted,fontSize:9,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
+            onMouseLeave={e=>{e.currentTarget.style.borderColor=aiOpen?A.accentLight:A.border2;e.currentTarget.style.color=aiOpen?A.accent:A.textMuted;e.currentTarget.style.background=aiOpen?A.accentBg:"transparent";}}>
+            {aiOpen?"◀ Ocultar IA":"▶ Chat IA"}
+          </button>
+
+          <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
+
+          {/* ─── Usuario (avatar + nombre + créditos) ── */}
+          <div style={{display:"flex",alignItems:"center",gap:7,padding:"4px 12px 4px 5px",background:rgba(A.accent,0.06),border:`1px solid ${rgba(A.accent,0.16)}`,borderRadius:22,flexShrink:0,transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background=rgba(A.accent,0.1);e.currentTarget.style.borderColor=rgba(A.accent,0.28);}}
+            onMouseLeave={e=>{e.currentTarget.style.background=rgba(A.accent,0.06);e.currentTarget.style.borderColor=rgba(A.accent,0.16);}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:`linear-gradient(135deg,${A.accent} 0%,${adjHex(A.accent,0.65)} 100%)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#fff",flexShrink:0,boxShadow:`0 2px 10px ${rgba(A.accent,0.4)}`}}>
+              {(user?.email?.[0]||"U").toUpperCase()}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:1}}>
+              <span style={{fontSize:9,color:A.text,fontWeight:600,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.2}}>
+                {user?.email?.split('@')[0]||"usuario"}
+              </span>
+              {user?.credits!=null&&(
+                <span style={{fontSize:7,color:A.accent,fontFamily:"monospace",fontWeight:700,lineHeight:1}}>
+                  {Number(user.credits).toLocaleString()} cr
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button onClick={handleLogout} title="Cerrar sesión"
+            style={{padding:"6px 11px",borderRadius:7,background:"transparent",border:`1px solid ${rgba(A.danger,0.28)}`,color:A.danger,fontSize:9,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background=rgba(A.danger,0.1);e.currentTarget.style.borderColor=A.danger;}}
+            onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor=rgba(A.danger,0.28);}}>
+            ↩ Salir
+          </button>
         </div>
       </div>
 
@@ -2362,38 +2990,59 @@ export default function PBIDesigner(){
 
             {/* Input */}
             <div style={{padding:"9px 12px",borderTop:`1px solid ${A.border}`,flexShrink:0}}>
-              <div style={{display:"flex",gap:5,marginBottom:6}}>
+              <div style={{display:"flex",gap:4,marginBottom:6}}>
+                {/* Adjuntar archivo genérico */}
                 <button onClick={()=>fileRef.current?.click()}
-                  style={{...B({flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:4,padding:"5px"}),transition:"all 0.12s"}}
+                  title="Adjuntar archivo (Excel, CSV, JSON, imagen…)"
+                  style={{...B({flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:3,padding:"5px",fontSize:9}),transition:"all 0.12s"}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
                   onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.color=A.textMuted;e.currentTarget.style.background=A.surface;}}>
-                  📎 Adjuntar archivo
+                  📎 Adjuntar
                 </button>
-                <button title="Auditar diseño — detecta problemas de jerarquía, contraste y dataviz"
+                {/* Importar captura de dashboard */}
+                <button onClick={()=>imgFileRef.current?.click()}
+                  title="Importar imagen de un dashboard — la IA recreará el layout automáticamente"
+                  style={{...B({flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:3,padding:"5px",fontSize:9}),transition:"all 0.12s"}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor="#d97706";e.currentTarget.style.color="#d97706";e.currentTarget.style.background="rgba(217,119,6,0.08)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.color=A.textMuted;e.currentTarget.style.background=A.surface;}}>
+                  📸 Importar
+                </button>
+                {/* Auditar diseño */}
+                <button
+                  title={els.length===0?"Primero crea un diseño para auditarlo":"Auditar diseño — detecta problemas de jerarquía, contraste y dataviz"}
                   onClick={()=>{
-                    if(els.length===0){return;}
+                    if(els.length===0)return;
                     setTimeout(()=>sendMsg({
                       visible:"🔍 Auditar diseño",
                       prompt:"Audita el diseño actual: jerarquía visual, contraste, accesibilidad, espaciado y mejores prácticas de dataviz. Sé específico con cada problema encontrado."
                     }),80);
                   }}
-                  style={{...B({padding:"5px 10px",fontSize:13}),transition:"all 0.12s"}}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.background=A.accentBg;}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.background=A.surface;}}>
-                  🔍
+                  style={{...B({display:"flex",alignItems:"center",justifyContent:"center",gap:3,padding:"5px 8px",fontSize:9,opacity:els.length===0?0.4:1}),transition:"all 0.12s"}}
+                  onMouseEnter={e=>{if(els.length>0){e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.background=A.accentBg;e.currentTarget.style.color=A.accent;}}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.background=A.surface;e.currentTarget.style.color=A.textMuted;}}>
+                  🔍 Auditar
                 </button>
-                <button title="Cambiar a vista móvil"
-                  onClick={()=>{
-                    if(els.length===0&&!mobileEls){return;}
-                    switchToMobile();
-                  }}
-                  style={{...B({padding:"5px 10px",fontSize:13}),transition:"all 0.12s"}}
+                {/* Vista móvil */}
+                <button title="Vista móvil (9:16)"
+                  onClick={()=>{if(els.length===0&&!mobileEls)return;switchToMobile();}}
+                  style={{...B({padding:"5px 8px",fontSize:12}),transition:"all 0.12s"}}
                   onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.background=A.accentBg;}}
                   onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.background=A.surface;}}>
                   📱
                 </button>
               </div>
               <input ref={fileRef} type="file" multiple accept="*/*" style={{display:"none"}} onChange={e=>{handleFiles(Array.from(e.target.files));e.target.value="";}}/>
+              {/* Input solo imágenes: dispara IMPORT MODE en la IA */}
+              <input ref={imgFileRef} type="file" multiple accept="image/*" style={{display:"none"}} onChange={async e=>{
+                const files=Array.from(e.target.files);e.target.value="";
+                if(!files.length)return;
+                await handleFiles(files);
+                const names=files.map(f=>f.name).join(", ");
+                setTimeout(()=>sendMsg({
+                  visible:`📸 Importar dashboard desde imagen: ${names}`,
+                  prompt:`El usuario ha subido una imagen de un dashboard existente (${names}). Usa IMPORT MODE: analiza la imagen en detalle y recrea el layout fielmente. Identifica cada visual (tipo, posición, tamaño, título). Genera un layout completo con mode:"replace". Si detectas colores de marca, inclúyelos en canvasTheme.`
+                }),300);
+              }}/>
               <div style={{display:"flex",gap:5,alignItems:"flex-end"}}>
                 <textarea value={input} onChange={e=>setInput(e.target.value)}
                   onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendMsg();}}}
@@ -2419,6 +3068,7 @@ export default function PBIDesigner(){
         </div>
         <span style={{fontSize:8,color:snapGrid?A.accent:A.textLight,fontFamily:"monospace"}}>{snapGrid?"⊞ Snap":"⊟ Snap"}</span>
         {selEl&&<span style={{fontSize:8,color:A.text,fontFamily:"monospace"}}>Sel: [{selEl.type}] x:{selEl.x} y:{selEl.y} {selEl.w}×{selEl.h}px</span>}
+        {autoSaveTs&&<span style={{fontSize:8,color:"#059669",fontWeight:600,fontFamily:"monospace"}}>✓ {autoSaveTs.toLocaleTimeString("es",{hour:"2-digit",minute:"2-digit"})}</span>}
         <span style={{marginLeft:"auto",fontSize:8,color:A.textLight,fontFamily:"monospace"}}>Del · Ctrl+Z · ↑↓←→</span>
       </div>
 
@@ -2449,6 +3099,7 @@ export default function PBIDesigner(){
         <VersionsModal
           A={A} savedDesigns={savedDesigns} currentCount={els.length}
           onSave={saveDesign} onLoad={loadDesign} onDelete={deleteDesign}
+          onFetchCloud={fetchCloudDesigns}
           onClose={()=>setVersionsModal(false)}
         />
       )}
@@ -2487,48 +3138,103 @@ export default function PBIDesigner(){
 }
 
 // ── Versions Modal (proyectos guardados) ─────────────────────────
-function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClose}){
+function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClose,onFetchCloud}){
   const[name,setName]=useState("");
+  const[cloudDesigns,setCloudDesigns]=useState([]);
+  const[syncing,setSyncing]=useState(false);
+  const[tab,setTab]=useState("local"); // "local" | "cloud"
+
+  const handleSync=async()=>{
+    setSyncing(true);
+    const designs=await onFetchCloud();
+    if(designs)setCloudDesigns(designs);
+    setSyncing(false);
+    setTab("cloud");
+  };
+
+  const allDesigns=tab==="local"?savedDesigns:cloudDesigns;
+
   return(
     <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:660,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:680,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
         <div style={{padding:"14px 20px",borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
             <div style={{fontSize:14,fontWeight:700,color:A.text}}>📂 Mis diseños</div>
-            <div style={{fontSize:9,color:A.textMuted,marginTop:1}}>Guarda el diseño actual y vuelve a él cuando quieras (incluye desktop + móvil)</div>
+            <div style={{fontSize:9,color:A.textMuted,marginTop:1}}>Guarda y recupera tus dashboards — también sincroniza con la nube</div>
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:A.textMuted,fontSize:18}}>×</button>
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
-          <div style={{display:"flex",gap:8,marginBottom:18,padding:"10px",background:A.accentBg,borderRadius:10}}>
-            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Nombre del diseño actual…"
-              style={{flex:1,background:A.surface,border:`1px solid ${A.border2}`,color:A.text,borderRadius:7,padding:"7px 10px",fontSize:10,outline:"none"}}/>
-            <button onClick={()=>{if(currentCount===0)return;onSave(name);setName("");}}
-              disabled={currentCount===0}
-              style={{background:currentCount===0?A.border:A.accent,color:currentCount===0?A.textLight:"#fff",border:"none",borderRadius:7,padding:"7px 16px",fontSize:10,fontWeight:600,cursor:currentCount===0?"default":"pointer",whiteSpace:"nowrap"}}>
-              💾 Guardar diseño actual
+
+        {/* Tabs local / nube */}
+        <div style={{display:"flex",gap:0,borderBottom:`1px solid ${A.border}`,flexShrink:0}}>
+          {[["local","💾 Local",savedDesigns.length],["cloud","☁️ Nube",cloudDesigns.length]].map(([id,label,count])=>(
+            <button key={id} onClick={()=>id==="cloud"&&cloudDesigns.length===0?handleSync():setTab(id)}
+              style={{flex:1,padding:"9px 0",fontSize:10,fontWeight:tab===id?700:400,
+                color:tab===id?A.accent:A.textMuted,background:"none",border:"none",
+                borderBottom:tab===id?`2px solid ${A.accent}`:"2px solid transparent",cursor:"pointer"}}>
+              {label}{count>0?` (${count})`:""}
             </button>
-          </div>
-          {savedDesigns.length===0
-            ?<div style={{textAlign:"center",padding:"30px 10px",color:A.textLight,fontSize:10}}>Aún no tienes diseños guardados.<br/>Crea un dashboard y guárdalo aquí.</div>
-            :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:10}}>
-              {savedDesigns.map(d=>(
-                <div key={d.id} style={{borderRadius:10,border:`1px solid ${A.border}`,background:A.bg,overflow:"hidden",cursor:"pointer",transition:"all 0.15s"}}
-                  onClick={()=>onLoad(d)}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 18px rgba(0,0,0,0.12)";}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border;e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
-                  <div style={{height:40,background:d.ct?.wallpaper||A.accentBg,padding:6,position:"relative",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <div style={{fontSize:8,fontFamily:"monospace",color:d.ct?.accent||A.accent,fontWeight:700}}>{d.count} elem{d.mobileEls?" · 📱":""}</div>
-                    <button onClick={e=>{e.stopPropagation();onDelete(d.id);}}
-                      style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(220,38,38,0.9)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+          ))}
+        </div>
+
+        <div style={{flex:1,overflowY:"auto",padding:"16px 20px"}}>
+          {/* Barra de guardar (solo en tab local) */}
+          {tab==="local"&&(
+            <div style={{display:"flex",gap:8,marginBottom:16,padding:"10px",background:A.accentBg,borderRadius:10}}>
+              <input value={name} onChange={e=>setName(e.target.value)}
+                placeholder="Nombre del diseño actual…"
+                onKeyDown={e=>{if(e.key==="Enter"&&currentCount>0){onSave(name);setName("");}}}
+                style={{flex:1,background:A.surface,border:`1px solid ${A.border2}`,color:A.text,borderRadius:7,padding:"7px 10px",fontSize:10,outline:"none"}}/>
+              <button onClick={()=>{if(currentCount===0)return;onSave(name);setName("");}}
+                disabled={currentCount===0}
+                style={{background:currentCount===0?A.border:A.accent,color:currentCount===0?A.textLight:"#fff",border:"none",borderRadius:7,padding:"7px 16px",fontSize:10,fontWeight:600,cursor:currentCount===0?"default":"pointer",whiteSpace:"nowrap"}}>
+                💾 Guardar
+              </button>
+            </div>
+          )}
+
+          {/* Botón sincronizar (tab nube) */}
+          {tab==="cloud"&&(
+            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+              <button onClick={handleSync} disabled={syncing}
+                style={{background:A.accent,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",fontSize:10,fontWeight:600,cursor:"pointer",opacity:syncing?0.7:1}}>
+                {syncing?"Sincronizando…":"↻ Actualizar desde nube"}
+              </button>
+            </div>
+          )}
+
+          {/* Grid de diseños */}
+          {allDesigns.length===0
+            ?(
+              <div style={{textAlign:"center",padding:"30px 10px",color:A.textLight,fontSize:10}}>
+                {tab==="local"
+                  ?"Aún no tienes diseños guardados localmente. Crea un dashboard y guárdalo."
+                  :(syncing?"Cargando diseños de la nube…":"Haz clic en «Actualizar desde nube» para cargar tus diseños guardados.")}
+              </div>
+            ):(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:10}}>
+                {allDesigns.map(d=>(
+                  <div key={d.id} style={{borderRadius:10,border:`1px solid ${A.border}`,background:A.bg,overflow:"hidden",cursor:"pointer",transition:"all 0.15s",position:"relative"}}
+                    onClick={()=>onLoad(d)}
+                    onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 18px rgba(0,0,0,0.12)";}}
+                    onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border;e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
+                    <div style={{height:44,background:d.ct?.wallpaper||A.accentBg,padding:6,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                      <div style={{fontSize:8,fontFamily:"monospace",color:d.ct?.accent||A.accent,fontWeight:700}}>{d.count||"?"} elem</div>
+                      {d.mobileEls&&<span style={{fontSize:8}}>📱</span>}
+                      <div style={{position:"absolute",top:4,left:6,fontSize:8,background:d.source==="cloud"?"#dbeafe":"#dcfce7",color:d.source==="cloud"?"#1e40af":"#166534",padding:"1px 5px",borderRadius:4,fontWeight:600}}>
+                        {d.source==="cloud"?"☁️ nube":"💾 local"}
+                      </div>
+                      {tab==="local"&&<button onClick={e=>{e.stopPropagation();onDelete(d.id);}}
+                        style={{position:"absolute",top:4,right:4,width:18,height:18,borderRadius:"50%",background:"rgba(220,38,38,0.9)",border:"none",color:"#fff",cursor:"pointer",fontSize:11,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>}
+                    </div>
+                    <div style={{padding:"7px 9px"}}>
+                      <div style={{fontSize:10,fontWeight:600,color:A.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</div>
+                      <div style={{fontSize:8,color:A.textMuted,marginTop:1}}>{d.date}</div>
+                    </div>
                   </div>
-                  <div style={{padding:"7px 9px"}}>
-                    <div style={{fontSize:10,fontWeight:600,color:A.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</div>
-                    <div style={{fontSize:8,color:A.textMuted,marginTop:1}}>{d.date}</div>
-                  </div>
-                </div>
-              ))}
-            </div>}
+                ))}
+              </div>
+            )}
         </div>
       </div>
     </div>
@@ -2892,6 +3598,45 @@ function _buildZip(entries){
   return out;
 }
 
+// ── GENERADOR DE SVG — renderiza el diseño completo como SVG vectorial ──────
+function generateDesignSVG(els,ct,CW,CH){
+  const esc=s=>String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const ac=ct.accent||"#2563eb";const ac2=ct.accent2||"#1d4ed8";
+  const bg=ct.cardBg||"#ffffff";const bd=ct.cardBorder||"#e2e8f0";
+  const tx=ct.text||"#1e293b";const ts=ct.textSub||"#64748b";
+  const hBg=ct.headerBg||ac;const nBg=ct.headerBg||ac2||"#1e293b";
+  const sec=ct.secondary||"#eff6ff";const r2=ct.r!==undefined?ct.r:8;
+  const el2svg=e=>{
+    const{x,y,w,h,type}=e;const lbl=esc(e.label||type);
+    switch(type){
+      case'header':return`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${hBg}"/><text x="${x+20}" y="${y+h*.65}" font-family="Segoe UI Semibold,sans-serif" font-size="16" fill="white">${lbl}</text>`;
+      case'nav':{const items=['Home','Análisis','Ventas','Config'];const ih=Math.min(32,(h-32)/items.length);return`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${nBg}"/>${items.map((t,i)=>`<text x="${x+16}" y="${y+32+(i+.7)*ih}" font-family="Segoe UI,sans-serif" font-size="9" fill="rgba(255,255,255,.6)">${t}</text>`).join('')}`;}
+      case'kpi':return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><text x="${x+w/2}" y="${y+h*.5}" font-family="Segoe UI,sans-serif" font-size="${Math.min(26,w/4)}" font-weight="700" fill="${ac}" text-anchor="middle">—</text><text x="${x+w/2}" y="${y+h*.77}" font-family="Segoe UI,sans-serif" font-size="10" fill="${ts}" text-anchor="middle">${lbl}</text>`;
+      case'kpispark':{const pts=[[0,.4],[.2,.6],[.4,.3],[.6,.7],[.8,.4],[1,.2]];const sw=w*.38;const sx=x+w*.57;const sy=y+h*.25;const sh=h*.45;const sp=pts.map(([px,py])=>`${sx+px*sw},${sy+py*sh}`).join(' ');return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><text x="${x+10}" y="${y+h*.48}" font-family="Segoe UI,sans-serif" font-size="${Math.min(20,w/5)}" font-weight="700" fill="${ac}">—</text><text x="${x+10}" y="${y+h*.73}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}">${lbl}</text><polyline points="${sp}" fill="none" stroke="${ac}" stroke-width="1.5" stroke-linejoin="round" opacity=".75"/>`;}
+      case'slicer':{const chips=lbl.split('·').slice(0,5);const cw2=Math.min(90,(w-32)/Math.max(chips.length,1));return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/>${chips.map((c,i)=>`<rect x="${x+14+i*(cw2+6)}" y="${y+(h-20)/2}" width="${cw2}" height="20" rx="10" fill="${sec}" stroke="${ac}" stroke-width="1"/><text x="${x+14+i*(cw2+6)+cw2/2}" y="${y+h/2+4}" font-family="Segoe UI,sans-serif" font-size="8" fill="${ac}" text-anchor="middle">${esc(c.trim()).slice(0,11)}</text>`).join('')}`;}
+      case'bar':{const n=Math.min(6,Math.floor(w/26));const vals=[.65,.85,.5,.95,.7,.4];const bw=(w-28)/(n*1.4);const mh=h-36;return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><text x="${x+10}" y="${y+15}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}">${lbl}</text>${vals.slice(0,n).map((v,i)=>{const bh=mh*v;return`<rect x="${x+14+i*(bw+bw*.4)}" y="${y+20+mh-bh}" width="${bw}" height="${bh}" rx="2" fill="${ac}" opacity="${.6+i*.06}"/>`;}).join('')}`;}
+      case'line':{const pts2=[[0,.6],[.17,.3],[.33,.5],[.5,.15],[.67,.35],[.83,.2],[1,.4]];const ax=x+12;const ay=y+22;const aw=w-24;const ah=h-34;const ps=pts2.map(([px,py])=>`${ax+px*aw},${ay+py*ah}`).join(' ');return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><text x="${x+10}" y="${y+15}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}">${lbl}</text><polygon points="${ax},${ay+ah} ${ps} ${ax+aw},${ay+ah}" fill="${ac}" opacity=".1"/><polyline points="${ps}" fill="none" stroke="${ac}" stroke-width="2" stroke-linejoin="round"/>`;}
+      case'pie':{const cx=x+w/2;const cy=y+h/2;const ro=Math.min(w,h)/2-14;const ri=ro*.56;const slices=[.35,.25,.22,.18];const cols=[ac,ac2,ct.success||"#059669",ct.warning||"#f59e0b"];let ang=0;const paths=slices.map((v,i)=>{const s=ang;const en=ang+v*2*Math.PI;ang=en;const x1=cx+ro*Math.cos(s-Math.PI/2),y1=cy+ro*Math.sin(s-Math.PI/2),x2=cx+ro*Math.cos(en-Math.PI/2),y2=cy+ro*Math.sin(en-Math.PI/2),ix1=cx+ri*Math.cos(s-Math.PI/2),iy1=cy+ri*Math.sin(s-Math.PI/2),ix2=cx+ri*Math.cos(en-Math.PI/2),iy2=cy+ri*Math.sin(en-Math.PI/2),lg=en-s>Math.PI?1:0;return`<path d="M ${x1} ${y1} A ${ro} ${ro} 0 ${lg} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${ri} ${ri} 0 ${lg} 0 ${ix1} ${iy1} Z" fill="${cols[i]}" opacity=".85"/>`;}).join('');return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/>${paths}<text x="${cx}" y="${cy+5}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}" text-anchor="middle">${lbl}</text>`;}
+      case'gauge':{const gcx=x+w/2;const gcy=y+h*.68;const gr=Math.min(w*.38,h*.46);const fx=gcx+gr*Math.cos(Math.PI-.72*Math.PI);const fy=gcy-gr*Math.sin(.72*Math.PI);return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><path d="M ${gcx-gr} ${gcy} A ${gr} ${gr} 0 0 1 ${gcx+gr} ${gcy}" fill="none" stroke="${bd}" stroke-width="${gr*.27}" stroke-linecap="round"/><path d="M ${gcx-gr} ${gcy} A ${gr} ${gr} 0 0 1 ${fx} ${fy}" fill="none" stroke="${ac}" stroke-width="${gr*.27}" stroke-linecap="round"/><text x="${gcx}" y="${gcy-6}" font-family="Segoe UI,sans-serif" font-size="13" font-weight="700" fill="${ac}" text-anchor="middle">72%</text><text x="${gcx}" y="${y+h-8}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}" text-anchor="middle">${lbl}</text>`;}
+      case'table':{const nR=Math.floor((h-28)/20);const rrows=Array.from({length:Math.min(nR,6)},(_,i)=>`<rect x="${x}" y="${y+26+i*20}" width="${w}" height="20" fill="${i%2?bg:sec}" opacity=".7"/>`).join('');return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><rect x="${x}" y="${y}" width="${w}" height="26" fill="${ac}" opacity=".13" rx="${r2}"/>${rrows}<text x="${x+10}" y="${y+18}" font-family="Segoe UI Semibold,sans-serif" font-size="10" fill="${tx}">${lbl}</text>`;}
+      case'matrix':return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><rect x="${x}" y="${y}" width="${w}" height="24" fill="${ac}" opacity=".12" rx="${r2}"/><text x="${x+10}" y="${y+16}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}">${lbl}</text>`;
+      case'scatter':{const dots=[[.2,.3],[.4,.6],[.6,.2],[.8,.7],[.3,.8],[.7,.4],[.5,.5],[.15,.55],[.85,.3]];return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><text x="${x+10}" y="${y+15}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}">${lbl}</text>${dots.map(([px,py])=>`<circle cx="${x+16+px*(w-32)}" cy="${y+22+py*(h-36)}" r="4" fill="${ac}" opacity=".7"/>`).join('')}`;}
+      case'treemap':{const blks=[{x:0,y:0,w:.6,h:.55},{x:.6,y:0,w:.4,h:.35},{x:.6,y:.35,w:.4,h:.2},{x:0,y:.55,w:.35,h:.45},{x:.35,y:.55,w:.25,h:.45},{x:.6,y:.55,w:.4,h:.45}];const cls=[ac,ac2,ct.success||"#059669",ct.warning||"#f59e0b",ct.danger||"#dc2626",ts];const iw=w-4;const ih2=h-24;return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/>${blks.map((b,i)=>`<rect x="${x+2+b.x*iw}" y="${y+2+b.y*ih2}" width="${b.w*iw-2}" height="${b.h*ih2-2}" fill="${cls[i%cls.length]}" opacity=".8"/>`).join('')}<text x="${x+6}" y="${y+h-6}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}">${lbl}</text>`;}
+      case'button':return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="6" fill="${ac}"/><text x="${x+w/2}" y="${y+h/2+4}" font-family="Segoe UI Semibold,sans-serif" font-size="10" fill="white" text-anchor="middle">${lbl}</text>`;
+      case'image':return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${sec}" stroke="${bd}" stroke-width="1"/><text x="${x+w/2}" y="${y+h*.5}" font-size="${Math.min(w,h)*.28}" text-anchor="middle">🖼</text><text x="${x+w/2}" y="${y+h*.78}" font-family="Segoe UI,sans-serif" font-size="9" fill="${ts}" text-anchor="middle">${lbl}</text>`;
+      default:return`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r2}" fill="${bg}" stroke="${bd}" stroke-width="1"/><text x="${x+w/2}" y="${y+h/2+4}" font-family="Segoe UI,sans-serif" font-size="10" fill="${ts}" text-anchor="middle">${lbl}</text>`;
+    }
+  };
+  return`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${CW} ${CH}" width="${CW}" height="${CH}"><rect width="${CW}" height="${CH}" fill="${ct.canvas||"#ffffff"}"/>${els.map(e=>el2svg(e)).join('')}</svg>`;
+}
+function generatePreviewHTML(els,ct,navCfg,hdrCfg,CW,CH){
+  const svg=generateDesignSVG(els,ct,CW,CH);
+  const title=hdrCfg?.title||"PBI Dashboard";
+  const ac=ct.accent||"#2563eb";
+  const types=[...new Set(els.map(e=>e.type))];
+  return`<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title} — Preview</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;padding:28px 20px}.top{text-align:center;margin-bottom:20px}.top h1{font-size:18px;font-weight:700;color:#f1f5f9}.top p{font-size:11px;color:#64748b;margin-top:4px}.wrap{max-width:${CW}px;margin:0 auto;border-radius:10px;overflow:hidden;box-shadow:0 12px 48px rgba(0,0,0,.6)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;max-width:${CW}px;margin:18px auto 0}.card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:12px}.card h3{font-size:9px;font-weight:600;color:#475569;text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}.card p{font-size:11px;color:#e2e8f0}.badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;margin:2px 2px 2px 0;background:${ac}22;color:${ac};border:1px solid ${ac}44}</style></head><body><div class="top"><h1>📊 ${title}</h1><p>Vista previa del diseño · ${els.length} elementos · Canvas ${CW}×${CH}px · Generado por PBI Designer</p></div><div class="wrap">${svg}</div><div class="grid"><div class="card"><h3>Dimensiones</h3><p>${CW} × ${CH} px</p></div><div class="card"><h3>Colores del tema</h3><p>${[ct.accent,ct.canvas,ct.cardBg].filter(Boolean).map(c=>`<span class="badge" style="background:${c}33;border-color:${c}55;color:${c}">${c}</span>`).join('')}</p></div><div class="card"><h3>Tipos de visual (${els.length})</h3><p>${types.map(t=>`<span class="badge">${t}</span>`).join('')}</p></div><div class="card"><h3>Navegación</h3><p>${navCfg?.position||'left'} · ${navCfg?.style||'collapsible'}</p></div></div></body></html>`;
+}
+
 // Mapeo de nuestros tipos → tipos de visual reales de Power BI
 const PBIT_VISUAL_MAP={
   kpi:"card", kpispark:"card", bar:"clusteredBarChart", line:"lineChart", pie:"donutChart",
@@ -2903,78 +3648,93 @@ const PBIT_VISUAL_MAP={
 // ═══ ESTRUCTURA VERIFICADA contra pbit REAL (FlowViz, diseccionado byte a byte) ═══
 // Version="1.30" · Settings con QueriesSettings · Metadata Version:5 (PascalCase)
 // Content_Types UTF-8 CON BOM · resto UTF-16LE SIN BOM · baseTheme CY18SU04
-function buildPbit(els,ct,CW,CH,mobileEls){
+function buildPbit(els,ct,CW,CH,mobileEls,navCfg,hdrCfg){
   const esc=s=>String(s||"").replace(/'/g,"").replace(/"/g,"");
   const rid=()=>Math.floor(Math.random()*900000000)+100000000; // ids numéricos como el real
   const hexname=()=>Array.from({length:20},()=>"0123456789abcdef"[Math.floor(Math.random()*16)]).join("");
+  // GUID del visual HTML Content by dm-p (Daniel Marsh-Patrick) — instalar 1 vez desde PBI Desktop marketplace
+  const HTML_CONTENT_GUID="htmlContent443BE3AD55E043BF878BED274D3A6865";
+  // Escapa un string para expresión DAX (las comillas dobles se representan como "")
+  const daxStr=s=>'"'+String(s).replace(/"/g,'""')+'"';
 
   // Mapear elementos móviles por id para emparejarlos con los desktop
   const mobileById={};
   if(mobileEls&&mobileEls.length)mobileEls.forEach(m=>{mobileById[m.id]=m;});
 
+  const C=hex=>({solid:{color:{expr:{Literal:{Value:`'${hex}'`}}}}});
+  const acHex=ct.accent||"#2563eb";
+  const hdrBgHex=ct.headerBg||ct.accent||"#2563eb";
+  const navBgHex=ct.headerBg||ct.accent2||"#1e293b";
+  const cardBgHex=ct.cardBg||"#ffffff";
+  const cardBdrHex=ct.cardBorder||"#e2e8f0";
+  const txHex=ct.text||"#1e293b";
+  const tsHex=ct.textSub||"#64748b";
+
+  // Genera HTMLs para nav y header si los elementos existen y tenemos la config
+  const navEl=els.find(e=>e.type==="nav");
+  const hdrEl=els.find(e=>e.type==="header");
+  const navHtmlStr=(navCfg&&navEl)?generateNavHTML(navCfg,ct):null;
+  const hdrHtmlStr=(hdrCfg&&hdrEl)?generateHeaderHTML(hdrCfg,ct,navCfg):null;
+
   const visualContainers=els.map((e,i)=>{
-    const vt=PBIT_VISUAL_MAP[e.type]||"textbox";
     const name=hexname();
-    // layouts: id=0 es el de escritorio; id=1 es el móvil (Power BI Mobile)
     const layouts=[{id:0,position:{x:e.x,y:e.y,z:i,width:e.w,height:e.h,tabOrder:(i+1)*1000}}];
     const m=mobileById[e.id];
-    if(m){
-      layouts.push({id:1,position:{x:m.x,y:m.y,z:i,width:m.w,height:m.h,tabOrder:(i+1)*1000},
-        // displayState visible en móvil
-        parentGroupName:null});
-    }
-    const cfg={
-      name,
-      layouts,
-      singleVisual:{
-        visualType:vt,
-        drillFilterOtherVisuals:true,
-        vcObjects:{title:[{properties:{
-          show:{expr:{Literal:{Value:"true"}}},
-          text:{expr:{Literal:{Value:`'${esc(e.label||e.type)}'`}}},
-          fontFamily:{expr:{Literal:{Value:"'Segoe UI Semibold'"}}},
-          fontSize:{expr:{Literal:{Value:"11D"}}},
-          fontColor:{solid:{color:{expr:{Literal:{Value:`'${ct.text||"#1e293b"}'`}}}}},
-          alignment:{expr:{Literal:{Value:"'left'"}}},
-          background:{solid:{color:{expr:{Literal:{Value:`'${ct.cardBg||"#ffffff"}'`}}}}},
-        }}]},
-      },
-    };
+    if(m)layouts.push({id:1,position:{x:m.x,y:m.y,z:i,width:m.w,height:m.h,tabOrder:(i+1)*1000},parentGroupName:null});
 
-    // Aplicar colores del tema directamente a cada visual (para que no salgan en gris)
-    const C=hex=>({solid:{color:{expr:{Literal:{Value:`'${hex}'`}}}}});
-    const accentHex=ct.accent||"#2563eb";
-    const headerBgHex=ct.headerBg||ct.accent||"#2563eb";
-    const cardBgHex=ct.cardBg||"#ffffff";
+    let cfg;
 
     if(e.type==="header"){
-      // Header: fondo con color del header + título blanco
-      cfg.singleVisual.objects={
-        rectangle:[{properties:{fillColor:[C(headerBgHex)]}}],
-      };
-      cfg.singleVisual.vcObjects={
-        background:[{properties:{color:C(headerBgHex),show:{expr:{Literal:{Value:"true"}}}}}],
-      };
+      if(hdrHtmlStr){
+        // Visual HTML Content — renderiza el HTML del header cuando el visual está instalado en PBI Desktop
+        const qRef="_Medidas._HeaderHTML";
+        cfg={name,layouts,singleVisual:{
+          visualType:HTML_CONTENT_GUID,
+          projections:{content:[{queryRef:qRef,active:false}]},
+          prototypeQuery:{Version:2,From:[{Name:"m",Entity:"_Medidas",Type:0}],
+            Select:[{Measure:{Expression:{SourceRef:{Source:"m"}},Property:"_HeaderHTML"},Name:qRef}]},
+          vcObjects:{background:[{properties:{show:{expr:{Literal:{Value:"false"}}}}}]},
+        }};
+      }else{
+        // Fallback: shape coloreado (si no hay hdrCfg disponible)
+        cfg={name,layouts,singleVisual:{visualType:"shape",
+          vcObjects:{background:[{properties:{color:C(hdrBgHex),show:{expr:{Literal:{Value:"true"}}}}}],
+                     title:[{properties:{show:{expr:{Literal:{Value:"false"}}}}}]}}};
+      }
     }else if(e.type==="nav"){
-      // Nav: fondo con tono del tema
-      const navBg=ct.headerBg||ct.accent2||"#1e293b";
-      cfg.singleVisual.vcObjects={
-        background:[{properties:{color:C(navBg),show:{expr:{Literal:{Value:"true"}}}}}],
-      };
-    }else if(["bar","line","pie","gauge","scatter","treemap","matrix","kpispark"].includes(e.type)){
-      // Charts: color de datos = acento del tema
-      cfg.singleVisual.objects={
-        dataPoint:[{properties:{defaultColor:C(accentHex),fill:C(accentHex)}}],
-      };
-      cfg.singleVisual.vcObjects=cfg.singleVisual.vcObjects||{};
-      cfg.singleVisual.vcObjects.background=[{properties:{color:C(cardBgHex),show:{expr:{Literal:{Value:"true"}}}}}];
-    }else if(e.type==="kpi"||e.type==="card"){
-      // KPI/Card: valor en color de acento, fondo de tarjeta
-      cfg.singleVisual.objects={
-        labels:[{properties:{color:C(accentHex)}}],
-      };
-      cfg.singleVisual.vcObjects=cfg.singleVisual.vcObjects||{};
-      cfg.singleVisual.vcObjects.background=[{properties:{color:C(cardBgHex),show:{expr:{Literal:{Value:"true"}}}}}];
+      if(navHtmlStr){
+        // Visual HTML Content — renderiza el HTML del nav cuando el visual está instalado en PBI Desktop
+        const qRef="_Medidas._NavHTML";
+        cfg={name,layouts,singleVisual:{
+          visualType:HTML_CONTENT_GUID,
+          projections:{content:[{queryRef:qRef,active:false}]},
+          prototypeQuery:{Version:2,From:[{Name:"m",Entity:"_Medidas",Type:0}],
+            Select:[{Measure:{Expression:{SourceRef:{Source:"m"}},Property:"_NavHTML"},Name:qRef}]},
+          vcObjects:{background:[{properties:{show:{expr:{Literal:{Value:"false"}}}}}]},
+        }};
+      }else{
+        // Fallback: shape coloreado (si no hay navCfg disponible)
+        cfg={name,layouts,singleVisual:{visualType:"shape",
+          vcObjects:{background:[{properties:{color:C(navBgHex),show:{expr:{Literal:{Value:"true"}}}}}],
+                     title:[{properties:{show:{expr:{Literal:{Value:"false"}}}}}]}}};
+      }
+    }else if(e.type==="button"){
+      // Shape con color de acento para botones
+      cfg={name,layouts,singleVisual:{visualType:"shape",
+        vcObjects:{background:[{properties:{color:C(acHex),show:{expr:{Literal:{Value:"true"}}}}}],
+                   title:[{properties:{show:{expr:{Literal:{Value:"false"}}}}}]}}};
+    }else{
+      // Visuals nativos de Power BI — muestran "Seleccione o arrastre campos" hasta conectar datos
+      const pbiType=PBIT_VISUAL_MAP[e.type]||"card";
+      cfg={name,layouts,singleVisual:{
+        visualType:pbiType,
+        vcObjects:{
+          title:[{properties:{
+            show:{expr:{Literal:{Value:"true"}}},
+            titleText:{expr:{Literal:{Value:`'${esc(e.label||e.type)}'`}}},
+          }}],
+        },
+      }};
     }
 
     return{id:rid(),x:e.x,y:e.y,z:i,width:e.w,height:e.h,
@@ -3044,6 +3804,11 @@ function buildPbit(els,ct,CW,CH,mobileEls){
       annotations:[{name:"PBIDesigner_Source",value:"KPI placeholder"}],
     };
   });
+  // Medidas HTML: expresiones DAX constantes con el HTML completo del nav y header
+  if(navHtmlStr)measures.push({name:"_NavHTML",expression:daxStr(navHtmlStr),formatString:"",
+    annotations:[{name:"PBIDesigner_Source",value:"Nav HTML Content — visual HTML Content de dm-p"}]});
+  if(hdrHtmlStr)measures.push({name:"_HeaderHTML",expression:daxStr(hdrHtmlStr),formatString:"",
+    annotations:[{name:"PBIDesigner_Source",value:"Header HTML Content — visual HTML Content de dm-p"}]});
   const measuresTable=measures.length?[{
     name:"_Medidas",
     isHidden:false,
@@ -3116,11 +3881,18 @@ ${els.map(e=>`     [${(PBIT_VISUAL_MAP[e.type]||"textbox").padEnd(18)}] "${e.lab
   ✓ Título visible en cada visual
 ${mobileEls&&mobileEls.length?`  ✓ 📱 VISTA MÓVIL INCLUIDA (${mobileEls.length} visuals) — embebida en el mismo archivo.`:`  ⚠ Sin vista móvil — genera el diseño móvil (botón 📱) antes de exportar.`}
 
+REQUISITO — VISUAL "HTML Content":
+  ⚡ El nav y el header usan el visual "HTML Content" by dm-p.
+     Si no lo tienes: en PBI Desktop → panel Visualizaciones → ⋯ → Obtener más visuals → busca "HTML Content" (by Daniel Marsh-Patrick)
+     O descarga el .pbiviz desde: github.com/dm-p/powerbi-visuals-html-content/releases
+
 CÓMO USARLO:
-  1. Genera el link de descarga abajo
-  2. Abre report.pbit con Power BI Desktop (doble clic)
-  3. Conecta tus datos y arrastra los campos a cada visual
-  4. La vista móvil ya viene dentro — ábrela en Power BI Mobile`,
+  1. Instala el visual "HTML Content" en PBI Desktop (solo 1 vez)
+  2. Genera el link de descarga abajo
+  3. Abre report.pbit con Power BI Desktop (doble clic)
+  4. El nav y el header se renderizan automáticamente con tu diseño
+  5. Conecta tus datos y arrastra los campos a cada visual
+  6. La vista móvil ya viene dentro — ábrela en Power BI Mobile`,
 `📦 POWER BI TEMPLATE (.pbit)
 
 This is a real Power BI template containing:
@@ -3133,10 +3905,17 @@ ${els.map(e=>`     [${(PBIT_VISUAL_MAP[e.type]||"textbox").padEnd(18)}] "${e.lab
   ✓ Title visible on each visual
 ${mobileEls&&mobileEls.length?`  ✓ 📱 MOBILE VIEW INCLUDED (${mobileEls.length} visuals) — embedded in the same file.`:`  ⚠ No mobile view — generate the mobile layout (📱 button) before exporting.`}
 
+REQUIREMENT — "HTML Content" VISUAL:
+  ⚡ Nav and header use the "HTML Content" visual by dm-p.
+     If not installed: PBI Desktop → Visualizations pane → ⋯ → Get more visuals → search "HTML Content" (by Daniel Marsh-Patrick)
+     Or download .pbiviz from: github.com/dm-p/powerbi-visuals-html-content/releases
+
 HOW TO USE:
-  1. Generate the download link below
-  2. Open report.pbit with Power BI Desktop (double-click)
-  3. Connect your data and drag fields onto each visual
+  1. Install the "HTML Content" visual in PBI Desktop (once only)
+  2. Generate the download link below
+  3. Open report.pbit with Power BI Desktop (double-click)
+  4. Nav and header render automatically with your design
+  5. Connect your data and drag fields onto each visual
   4. The mobile view is already inside — open it in Power BI Mobile`)},
     theme: {label:"pbi-theme.json", mime:"application/json", icon:"🎨",
             hint:"Power BI → View → Themes → Browse for themes",
@@ -3156,6 +3935,9 @@ HOW TO USE:
     readme:{label:"README.txt",     mime:"text/plain",        icon:"📋",
             hint:"Instrucciones paso a paso para recrear en Power BI Desktop",
             content:()=>buildReadme(els,ct,navCfg,CW,CH)},
+    preview:{label:"design-preview.html",mime:"text/html",    icon:"🖼",
+            hint:"Abre en el navegador — muestra el diseño completo con colores reales para usarlo como referencia al conectar datos en PBI Desktop",
+            content:()=>generatePreviewHTML(els,ct,navCfg,hdrCfg,CW,CH)},
   };
 
   useEffect(()=>{
@@ -3182,7 +3964,7 @@ HOW TO USE:
   const generateBlob=()=>{
     if(blobUrl) URL.revokeObjectURL(blobUrl);
     const blob=cur.binary
-      ?new Blob([buildPbit(els,ct,CW,CH,mobileEls)],{type:cur.mime})
+      ?new Blob([buildPbit(els,ct,CW,CH,mobileEls,navCfg,hdrCfg)],{type:cur.mime})
       :new Blob([text],{type:cur.mime});
     setBlobUrl(URL.createObjectURL(blob));
     setBlobName(cur.label);
@@ -3191,7 +3973,7 @@ HOW TO USE:
   // Construye el contenido binario de un archivo dado su key
   const fileBytes=(key)=>{
     const f=files[key];
-    if(f.binary)return buildPbit(els,ct,CW,CH,mobileEls);
+    if(f.binary)return buildPbit(els,ct,CW,CH,mobileEls,navCfg,hdrCfg);
     return _utf8(f.content());
   };
 
