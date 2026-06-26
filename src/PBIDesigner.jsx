@@ -1197,6 +1197,9 @@ function HandleOverlay({el,ct,zoom,CW,CH,snapGrid,onResize,onCommit}){
 }
 
 // ── GENERADORES HTML CONTENT + DAX ───────────────────────────────
+function escapeHtml(str){
+  return String(str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
 function hexToRgb(hex){
   const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return r?`${parseInt(r[1],16)},${parseInt(r[2],16)},${parseInt(r[3],16)}`:"0,0,0";
@@ -1241,13 +1244,13 @@ function generateNavHTML(nav,ct){
 <div class="nav" id="nav">
   <div class="nav-header">
     ${logoUrl?`<img src="${directImageUrl(logoUrl)}" class="logo" onerror="this.style.display='none'">`:`<div class="logo-placeholder">⬡</div>`}
-    <span class="report-name">${reportName}</span>
+    <span class="report-name">${escapeHtml(reportName)}</span>
     ${isCollapsible?`<span class="toggle" onclick="toggleNav()">◀</span>`:""}
   </div>
   <div class="nav-items">
     ${pages.map((p,i)=>`<div class="nav-item${(p.active||(!pages.some(x=>x.active)&&i===0))?" active":""}" onclick="setActive(this)">
-      <span class="icon">${p.icon}</span>
-      <span class="label">${p.label}</span>
+      <span class="icon">${escapeHtml(p.icon)}</span>
+      <span class="label">${escapeHtml(p.label)}</span>
     </div>`).join("\n    ")}
   </div>
 </div>
@@ -1299,8 +1302,8 @@ function generateHeaderHTML(hdr,ct,nav){
 <div class="header">
   ${logoUrl?`<img src="${directImageUrl(logoUrl)}" class="logo" onerror="this.outerHTML='<div class=&quot;logo-ph&quot;>⬡</div>'">`:`<div class="logo-ph">⬡</div>`}
   <div class="titles">
-    <div class="title">${title}</div>
-    ${subtitle?`<div class="subtitle">${subtitle}</div>`:""}
+    <div class="title">${escapeHtml(title)}</div>
+    ${subtitle?`<div class="subtitle">${escapeHtml(subtitle)}</div>`:""}
   </div>
 </div>
 </body></html>`;
@@ -2317,6 +2320,7 @@ export default function PBIDesigner(){
 
   return !user ? <LoginScreen onLogin={handleLogin}/> : (
     <div style={{width:"100vw",height:"100vh",background:A.bg,display:"flex",flexDirection:"column",fontFamily:"'Segoe UI',system-ui,sans-serif",color:A.text,position:"relative"}}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
 
       {/* ══ TOPBAR ══════════════════════════════════════════════════ */}
       <div style={{minHeight:54,background:A.topbar,borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",padding:"0 14px",gap:6,zIndex:1000,flexShrink:0,boxShadow:`0 2px 20px ${rgba(A.accent,0.08)},0 1px 0 ${A.border}`,flexWrap:"wrap",rowGap:4}}>
@@ -2832,7 +2836,7 @@ export default function PBIDesigner(){
               <div style={{position:"absolute",left:0,right:0,top:26,height:CH,overflow:"hidden",borderRadius:"0 0 12px 12px"}}
                 onMouseDown={e=>{if(e.target===e.currentTarget)setSel(null);}}>
                 {els.length===0&&(
-                  <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,pointerEvents:"none",opacity:0.35}}>
+                  <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:10,pointerEvents:"none",opacity:0.7}}>
                     <div style={{fontSize:32,color:ct.textMuted}}>⬡</div>
                     <div style={{fontSize:11,color:ct.textSub,textAlign:"center",lineHeight:1.8,fontFamily:"'Segoe UI',sans-serif"}}>Describe tu reporte en el chat IA<br/>o arrastra elementos desde el panel izquierdo</div>
                   </div>

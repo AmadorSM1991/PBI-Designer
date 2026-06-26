@@ -87,6 +87,7 @@ Ejemplo de layout correcto:
 // Endpoint simple de login (por si authRoutes no lo tiene aún)
 // -------------------------------------------------------------------
 app.post('/api/auth/simple-login', (req, res) => {
+  if (process.env.NODE_ENV === 'production') return res.status(404).json({ error: 'Not found' });
   const userId = '93fa7701-f2cd-4eb3-ae8a-3a174f3cbbe2';
   const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
   res.json({
@@ -114,7 +115,8 @@ app.post('/api/dev/add-credits', (req, res, next) => {
     if (error) throw error;
     res.json({ success: true, credits: data.credits, message: `Créditos recargados a ${data.credits}` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('❌ Error recargando créditos:', err);
+    res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
@@ -198,7 +200,7 @@ function normalizeLayout(layout) {
 // ENDPOINT: Generar diseños con IA (PROTEGIDO)
 // -------------------------------------------------------------------
 app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
-  const { messages, system } = req.body;
+  const { messages } = req.body;
   const userId = req.user.id;
 
   // Validar estructura del body antes de procesar
@@ -218,18 +220,16 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
       });
     }
 
-    // 2. Construir la lista de mensajes para Groq
-    const effectiveSystem = system || AI_SYS;
+    // 2. Construir la lista de mensajes para Gemini
     const groqMessages = [
-      { role: 'system', content: effectiveSystem },
+      { role: 'system', content: AI_SYS },
       ...messages.map(m => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: m.content }))
     ];
 
     console.log('📤 Enviando a Gemini...');
-    console.log('System prompt usado:', effectiveSystem.substring(0, 200));
 
     // 3. Llamar a Gemini — con fallback automático si el modelo principal falla
-    const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const GEMINI_MODELS = ['gemini-2.5-flash-preview-05-20', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
     let response, data, usedModel;
@@ -238,7 +238,7 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
       response = await fetch(GEMINI_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
-        body: JSON.stringify({ model, messages: groqMessages, temperature: 1, max_tokens: 4000 })
+        body: JSON.stringify({ model, messages: groqMessages, temperature: 0.3, max_tokens: 4000 })
       });
       data = await response.json();
       const geminiErr = Array.isArray(data) ? data[0]?.error : data?.error;
@@ -361,7 +361,7 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error en /api/generate:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error interno del servidor. Intenta de nuevo.' });
   }
 });
 
@@ -387,7 +387,7 @@ ${design.elements.map(e =>
 
 Proporciona sugerencias concretas sobre disposición, elementos faltantes, colores, jerarquía visual y flujo de lectura. Solo texto en español, con viñetas claras.`;
 
-    const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const GEMINI_MODELS = ['gemini-2.5-flash-preview-05-20', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
     let response, data;
@@ -413,7 +413,7 @@ Proporciona sugerencias concretas sobre disposición, elementos faltantes, color
 
   } catch (error) {
     console.error('❌ Error en /api/suggest:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error interno del servidor. Intenta de nuevo.' });
   }
 });
 
@@ -435,7 +435,7 @@ app.get('/api/user-designs', authMiddleware, async (req, res) => {
     res.json({ designs });
   } catch (error) {
     console.error('❌ Error al obtener diseños:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
@@ -453,22 +453,11 @@ app.post('/api/save-design', authMiddleware, async (req, res) => {
     if (error) throw error;
     res.json({ success: true, design: data[0] });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('❌ Error al guardar diseño:', error);
+    res.status(500).json({ error: 'Error interno del servidor.' });
   }
 });
 
-// -------------------------------------------------------------------
-// Endpoint de depuración (genera token)
-// -------------------------------------------------------------------
-app.get('/api/debug-token/:userId', (req, res) => {
-  const { userId } = req.params;
-  try {
-    const token = jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '1h' });
-    res.json({ token });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 // Iniciar servidor
 app.listen(PORT, () => {
