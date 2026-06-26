@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, Fragment } from "react";
 
 // ═══════════════════════════════════════════════════════════════════
 // APP SHELL THEMES — solo cambian la UI (panels, topbar, chat)
@@ -905,7 +905,8 @@ function ImageViz({el,ct}){return <div style={{width:"100%",height:"100%",backgr
 
 // ── VISUALES NUEVOS ───────────────────────────────────────────────
 function GaugeViz({el,ct}){
-  const pct=72, angle=-90+pct/100*180;
+  const hash=el.label.split("").reduce((a,c)=>a+c.charCodeAt(0),0);
+  const pct=45+(hash%40), angle=-90+pct/100*180;
   const cx=60,cy=60,r=44;
   const arc=(from,to,col,w)=>{
     const a0=(from-90)*Math.PI/180,a1=(to-90)*Math.PI/180;
@@ -943,13 +944,13 @@ function MatrixViz({el,ct}){
           <div/>
           {cols.map(c=><div key={c} style={{fontSize:8,fontWeight:700,color:ct.textSub,textAlign:"center",padding:"2px",fontFamily:"monospace"}}>{c}</div>)}
           {rows.slice(0,vR).map((r,ri)=>(
-            <>
-              <div key={r} style={{fontSize:8,color:ct.textSub,display:"flex",alignItems:"center",fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r}</div>
+            <Fragment key={r}>
+              <div style={{fontSize:8,color:ct.textSub,display:"flex",alignItems:"center",fontFamily:"'Segoe UI',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r}</div>
               {data[ri].map((v,ci)=>(
                 <div key={ci} style={{fontSize:8,fontWeight:600,textAlign:"center",padding:"4px 2px",borderRadius:3,fontFamily:"monospace",
                   background:rgba(ct.accent,0.08+0.5*v/max),color:v/max>0.5?"#fff":ct.text}}>{v}</div>
               ))}
-            </>
+            </Fragment>
           ))}
         </div>
       </div>
@@ -1713,6 +1714,7 @@ export default function PBIDesigner(){
   const[showGrid,setShowGrid]=useState(true);
   const[history,setHistory]=useState([[]]);
   const[histIdx,setHistIdx]=useState(0);
+  const histIdxRef=useRef(0);
   const[msgs,setMsgs]=useState([{role:"ai",text:"¡Hola! Soy tu asistente de diseño para Power BI. 👋\n\nEl canvas arranca siempre en Clean Light. Solo cambia si tú lo pides.\n\nPuedes:\n• Describir el reporte: «Dashboard de ventas con menú izquierdo»\n• Pedir colores: «tema oscuro azul» o «acento verde corporativo»\n• Subir una imagen/captura de referencia\n• Cargar una plantilla desde el panel ⬡\n\n¿Con qué te ayudo hoy?"}]);
   const[input,setInput]=useState("");
   const[loading,setLoading]=useState(false);
@@ -1847,7 +1849,9 @@ export default function PBIDesigner(){
     (async()=>{
       try{
         const r=await window.storage?.get("savedThemes");
-        if(r?.value)setSavedThemes(JSON.parse(r.value));
+        if(r?.value){setSavedThemes(JSON.parse(r.value));return;}
+        const ls=localStorage.getItem("pbi_savedThemes");
+        if(ls)setSavedThemes(JSON.parse(ls));
       }catch(e){}
     })();
   },[]);
@@ -1857,11 +1861,13 @@ export default function PBIDesigner(){
     const updated=[...savedThemes,theme];
     setSavedThemes(updated);
     try{await window.storage?.set("savedThemes",JSON.stringify(updated),false);}catch(e){}
+    try{localStorage.setItem("pbi_savedThemes",JSON.stringify(updated));}catch(e){}
   };
   const deleteTheme=async(id)=>{
     const updated=savedThemes.filter(t=>t.id!==id);
     setSavedThemes(updated);
     try{await window.storage?.set("savedThemes",JSON.stringify(updated),false);}catch(e){}
+    try{localStorage.setItem("pbi_savedThemes",JSON.stringify(updated));}catch(e){}
   };
 
   // ── VERSIONADO DE DISEÑOS (proyectos guardados) ──
@@ -2048,15 +2054,14 @@ export default function PBIDesigner(){
   const HISTORY_LIMIT=50;
   const pushHistory=useCallback(newEls=>{
     setHistory(h=>{
-      const trimmed=h.slice(0,histIdx+1);
+      const trimmed=h.slice(0,histIdxRef.current+1);
       trimmed.push([...newEls]);
-      // Descartar entradas antiguas si supera el límite
       return trimmed.length>HISTORY_LIMIT?trimmed.slice(trimmed.length-HISTORY_LIMIT):trimmed;
     });
-    setHistIdx(i=>Math.min(i+1,HISTORY_LIMIT-1));
-  },[histIdx]);
-  const undo=useCallback(()=>{if(histIdx>0){const i=histIdx-1;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
-  const redo=useCallback(()=>{if(histIdx<history.length-1){const i=histIdx+1;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
+    setHistIdx(i=>{const next=Math.min(i+1,HISTORY_LIMIT-1);histIdxRef.current=next;return next;});
+  },[]);
+  const undo=useCallback(()=>{if(histIdx>0){const i=histIdx-1;histIdxRef.current=i;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
+  const redo=useCallback(()=>{if(histIdx<history.length-1){const i=histIdx+1;histIdxRef.current=i;setHistIdx(i);setEls([...history[i]]);};},[histIdx,history]);
 
   // ── KEYBOARD ──
   useEffect(()=>{
@@ -2146,7 +2151,7 @@ export default function PBIDesigner(){
   const sendMsg=async(opts={})=>{
     // opts.prompt = texto técnico para la IA; opts.visible = lo que se muestra como mensaje del usuario
     const useOverride=opts&&typeof opts==="object"&&opts.prompt;
-    if(!useOverride&&(!input.trim()&&atts.length===0||loading))return;
+    if(!useOverride&&(!input.trim()&&atts.length===0))return;
     if(loading)return;
     const text=useOverride?opts.prompt:input.trim();
     const visibleText=useOverride?(opts.visible||opts.prompt):text;
@@ -2161,6 +2166,7 @@ export default function PBIDesigner(){
     if(text)userContent.push({type:"text",text});
     setMsgs(m=>[...m,{role:"user",text:[atts.map(a=>`📎 ${a.name}`).join(" "),visibleText].filter(Boolean).join("\n"),atts:[...atts]}]);
     setAtts([]);setLoading(true);
+    try{
     const hist=msgs.slice(-8).map(m=>({role:m.role==="ai"?"assistant":"user",content:m.text}));
     const curState={ct,elements:els};
     const{text:aiText,layout,audit}=await callAI([...hist,{role:"user",content:userContent.length===1&&userContent[0].type==="text"?userContent[0].text:userContent}],CW,CH,curState);
@@ -2169,7 +2175,7 @@ export default function PBIDesigner(){
     if(audit){
       setAuditResult(audit);
       setMsgs(m=>[...m,{role:"ai",text:aiText||"Auditoría completada — revisa el panel de resultados."}]);
-      setLoading(false); return;
+      return;
     }
     if(layout){
       // Solo aplica canvasTheme si la IA lo envió explícitamente (no null)
@@ -2211,7 +2217,7 @@ export default function PBIDesigner(){
         pages:layout.navConfig.pages||n.pages||NAV_DEFAULT.pages}));
     }
     setMsgs(m=>[...m,{role:"ai",text:aiText||"Diseño aplicado en el canvas."}]);
-    setLoading(false);
+    }finally{setLoading(false);}
   };
 
   // ── PRESETS ──
@@ -2351,9 +2357,9 @@ export default function PBIDesigner(){
 
         {/* ─── Zoom ───────────────────────────────────────────────── */}
         <div style={{display:"flex",alignItems:"center",gap:1,background:A.surface,borderRadius:8,padding:"2px 3px",border:`1px solid ${A.border}`,flexShrink:0}}>
-          <button onClick={()=>setZoom(z=>+(Math.max(0.3,z-0.1)).toFixed(1))} style={{...B({width:24,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}),border:"none",borderRadius:6}}>−</button>
+          <button aria-label="Reducir zoom" onClick={()=>setZoom(z=>+(Math.max(0.3,z-0.1)).toFixed(1))} style={{...B({width:24,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}),border:"none",borderRadius:6}}>−</button>
           <span style={{fontSize:9,color:A.textMuted,fontFamily:"monospace",width:38,textAlign:"center",fontWeight:600}}>{Math.round(zoom*100)}%</span>
-          <button onClick={()=>setZoom(z=>+(Math.min(2,z+0.1)).toFixed(1))} style={{...B({width:24,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}),border:"none",borderRadius:6}}>+</button>
+          <button aria-label="Aumentar zoom" onClick={()=>setZoom(z=>+(Math.min(2,z+0.1)).toFixed(1))} style={{...B({width:24,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}),border:"none",borderRadius:6}}>+</button>
           <div style={{width:1,height:14,background:A.border,margin:"0 2px"}}/>
           <button onClick={()=>{
             const vw=window.innerWidth-panelW-(aiOpen?aiW:0)-80;
@@ -2466,9 +2472,9 @@ export default function PBIDesigner(){
 
         {/* ─── Undo / Redo + info ─────────────────────────────────── */}
         <div style={{display:"flex",alignItems:"center",gap:2,flexShrink:0}}>
-          <button onClick={undo} disabled={histIdx===0} title="Deshacer (Ctrl+Z)"
+          <button onClick={undo} disabled={histIdx===0} title="Deshacer (Ctrl+Z)" aria-label="Deshacer"
             style={{...B({width:26,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,borderRadius:7}),opacity:histIdx===0?0.28:1}}>↩</button>
-          <button onClick={redo} disabled={histIdx>=history.length-1} title="Rehacer (Ctrl+Y)"
+          <button onClick={redo} disabled={histIdx>=history.length-1} title="Rehacer (Ctrl+Y)" aria-label="Rehacer"
             style={{...B({width:26,height:24,padding:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,borderRadius:7}),opacity:histIdx>=history.length-1?0.28:1}}>↪</button>
           <span style={{fontSize:8,color:A.textLight,fontFamily:"monospace",background:A.surface,border:`1px solid ${A.border}`,padding:"2px 7px",borderRadius:5,marginLeft:2,flexShrink:0}}>{els.length} elem</span>
         </div>
@@ -3102,6 +3108,7 @@ export default function PBIDesigner(){
       {versionsModal&&(
         <VersionsModal
           A={A} savedDesigns={savedDesigns} currentCount={els.length}
+          hasUnsaved={els.length>0}
           onSave={saveDesign} onLoad={loadDesign} onDelete={deleteDesign}
           onFetchCloud={fetchCloudDesigns}
           onClose={()=>setVersionsModal(false)}
@@ -3142,11 +3149,12 @@ export default function PBIDesigner(){
 }
 
 // ── Versions Modal (proyectos guardados) ─────────────────────────
-function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClose,onFetchCloud}){
+function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClose,onFetchCloud,hasUnsaved}){
   const[name,setName]=useState("");
   const[cloudDesigns,setCloudDesigns]=useState([]);
   const[syncing,setSyncing]=useState(false);
   const[tab,setTab]=useState("local"); // "local" | "cloud"
+  const[confirmLoad,setConfirmLoad]=useState(null); // diseño pendiente de confirmación
 
   const handleSync=async()=>{
     setSyncing(true);
@@ -3219,7 +3227,7 @@ function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClo
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(190px,1fr))",gap:10}}>
                 {allDesigns.map(d=>(
                   <div key={d.id} style={{borderRadius:10,border:`1px solid ${A.border}`,background:A.bg,overflow:"hidden",cursor:"pointer",transition:"all 0.15s",position:"relative"}}
-                    onClick={()=>onLoad(d)}
+                    onClick={()=>hasUnsaved?setConfirmLoad(d):onLoad(d)}
                     onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 6px 18px rgba(0,0,0,0.12)";}}
                     onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border;e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none";}}>
                     <div style={{height:44,background:d.ct?.wallpaper||A.accentBg,padding:6,position:"relative",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
@@ -3241,6 +3249,21 @@ function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClo
             )}
         </div>
       </div>
+      {confirmLoad&&(
+        <div onClick={()=>setConfirmLoad(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:12,padding:"20px 24px",width:340,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div style={{fontSize:13,fontWeight:700,color:A.text,marginBottom:6}}>¿Cargar diseño?</div>
+            <div style={{fontSize:10,color:A.textMuted,lineHeight:1.6,marginBottom:16}}>
+              Se perderán los cambios sin guardar del canvas actual.<br/>
+              <b style={{color:A.text}}>"{confirmLoad.name}"</b> reemplazará el diseño actual.
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>setConfirmLoad(null)} style={{background:"none",border:`1px solid ${A.border2}`,color:A.textMuted,borderRadius:7,padding:"6px 14px",fontSize:10,cursor:"pointer"}}>Cancelar</button>
+              <button onClick={()=>{onLoad(confirmLoad);setConfirmLoad(null);}} style={{background:A.accent,color:"#fff",border:"none",borderRadius:7,padding:"6px 14px",fontSize:10,fontWeight:600,cursor:"pointer"}}>Cargar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

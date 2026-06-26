@@ -14,8 +14,11 @@ const authRoutes = require('./routes/auth');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS: permite el frontend de Vite
-app.use(cors({ origin: 'http://localhost:5173' }));
+// CORS: permite el frontend (dev = localhost, prod = FRONTEND_URL env var)
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? [process.env.FRONTEND_URL].filter(Boolean)
+  : ['http://localhost:5173'];
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json({ limit: '10mb' }));
 
 // -------------------------------------------------------------------
@@ -200,7 +203,7 @@ function normalizeLayout(layout) {
 // ENDPOINT: Generar diseños con IA (PROTEGIDO)
 // -------------------------------------------------------------------
 app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
-  const { messages } = req.body;
+  const { messages, system } = req.body;
   const userId = req.user.id;
 
   // Validar estructura del body antes de procesar
@@ -221,8 +224,10 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
     }
 
     // 2. Construir la lista de mensajes para Gemini
+    // Aceptar system del cliente solo si es un prompt sustancial (>500 chars) — evita inyecciones triviales
+    const effectiveSystem = (system && typeof system === 'string' && system.length > 500) ? system : AI_SYS;
     const groqMessages = [
-      { role: 'system', content: AI_SYS },
+      { role: 'system', content: effectiveSystem },
       ...messages.map(m => ({ role: m.role === 'ai' ? 'assistant' : m.role, content: m.content }))
     ];
 
@@ -237,6 +242,7 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
       console.log(`📤 Intentando con modelo: ${model}`);
       response = await fetch(GEMINI_URL, {
         method: 'POST',
+        signal: AbortSignal.timeout(30000),
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
         body: JSON.stringify({ model, messages: groqMessages, temperature: 0.3, max_tokens: 4000 })
       });
@@ -360,6 +366,9 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
     });
 
   } catch (error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      return res.status(504).json({ error: '⏳ Gemini tardó demasiado en responder. Intenta de nuevo.' });
+    }
     console.error('❌ Error en /api/generate:', error);
     res.status(500).json({ error: 'Error interno del servidor. Intenta de nuevo.' });
   }
@@ -394,6 +403,7 @@ Proporciona sugerencias concretas sobre disposición, elementos faltantes, color
     for (const model of GEMINI_MODELS) {
       response = await fetch(GEMINI_URL, {
         method: 'POST',
+        signal: AbortSignal.timeout(20000),
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
         body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 1, max_tokens: 1000 })
       });
@@ -412,6 +422,9 @@ Proporciona sugerencias concretas sobre disposición, elementos faltantes, color
     res.json({ suggestions });
 
   } catch (error) {
+    if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+      return res.status(504).json({ error: '⏳ Tiempo de espera agotado. Intenta de nuevo.' });
+    }
     console.error('❌ Error en /api/suggest:', error);
     res.status(500).json({ error: 'Error interno del servidor. Intenta de nuevo.' });
   }
@@ -444,6 +457,12 @@ app.get('/api/user-designs', authMiddleware, async (req, res) => {
 // -------------------------------------------------------------------
 app.post('/api/save-design', authMiddleware, async (req, res) => {
   const { name, layout } = req.body;
+  if (!layout || typeof layout !== 'object') {
+    return res.status(400).json({ error: 'Layout inválido.' });
+  }
+  if (JSON.stringify(layout).length > 200 * 1024) {
+    return res.status(400).json({ error: 'Layout demasiado grande (máx. 200KB).' });
+  }
   try {
     const { data, error } = await supabase
       .from('user_designs')
