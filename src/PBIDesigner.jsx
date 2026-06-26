@@ -2489,12 +2489,12 @@ export default function PBIDesigner(){
 
         {/* ─── Acciones principales ───────────────────────────────── */}
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
-          {sel&&<button onClick={()=>{setEls(a=>{const n=a.filter(e=>e.id!==sel);pushHistory(n);return n;});setSel(null);}}
+          {sel&&<button aria-label="Eliminar elemento seleccionado" onClick={()=>{setEls(a=>{const n=a.filter(e=>e.id!==sel);pushHistory(n);return n;});setSel(null);}}
             style={{padding:"5px 10px",borderRadius:7,background:rgba(A.danger,0.07),border:`1px solid ${rgba(A.danger,0.3)}`,color:A.danger,fontSize:9,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,transition:"all 0.15s"}}
             onMouseEnter={e=>{e.currentTarget.style.background=rgba(A.danger,0.14);}}
             onMouseLeave={e=>{e.currentTarget.style.background=rgba(A.danger,0.07);}}>🗑 Eliminar</button>}
 
-          <button onClick={()=>{
+          <button aria-label="Nuevo lienzo" onClick={()=>{
             if(els.length===0){setMsgs(m=>[...m,{role:"ai",text:"El lienzo ya está vacío. Describe tu nuevo dashboard. 🆕"}]);return;}
             setConfirmNew(true);
           }} title="Nuevo lienzo"
@@ -2504,28 +2504,28 @@ export default function PBIDesigner(){
             📊 Nuevo
           </button>
 
-          <button onClick={()=>setVersionsModal(true)} title="Diseños guardados"
+          <button aria-label="Diseños guardados" onClick={()=>setVersionsModal(true)} title="Diseños guardados"
             style={{...B({padding:"6px 12px",fontSize:9,display:"flex",alignItems:"center",gap:4,flexShrink:0,borderRadius:7}),transition:"all 0.15s"}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.color=A.textMuted;e.currentTarget.style.background=A.surface;}}>
             📂 Diseños
           </button>
 
-          <button onClick={()=>setThemeModal(true)} title="Temas de marca"
+          <button aria-label="Temas de marca" onClick={()=>setThemeModal(true)} title="Temas de marca"
             style={{...B({padding:"6px 12px",fontSize:9,display:"flex",alignItems:"center",gap:4,flexShrink:0,borderRadius:7}),transition:"all 0.15s"}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor=A.border2;e.currentTarget.style.color=A.textMuted;e.currentTarget.style.background=A.surface;}}>
             🎨 Temas
           </button>
 
-          <button onClick={()=>setExportModal(true)}
+          <button aria-label="Exportar a Power BI" onClick={()=>setExportModal(true)}
             style={{padding:"6px 15px",borderRadius:7,background:`linear-gradient(135deg,${A.accent} 0%,${adjHex(A.accent,0.72)} 100%)`,border:"none",color:"#fff",fontSize:9,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5,flexShrink:0,boxShadow:`0 3px 14px ${rgba(A.accent,0.42)}`,transition:"all 0.2s",letterSpacing:0.2}}
             onMouseEnter={e=>{e.currentTarget.style.boxShadow=`0 5px 22px ${rgba(A.accent,0.6)}`;e.currentTarget.style.transform="translateY(-1px)";}}
             onMouseLeave={e=>{e.currentTarget.style.boxShadow=`0 3px 14px ${rgba(A.accent,0.42)}`;e.currentTarget.style.transform="translateY(0)";}}>
             ↗ Exportar PBI
           </button>
 
-          <button onClick={()=>setAiOpen(o=>!o)}
+          <button aria-label={aiOpen?"Ocultar chat IA":"Abrir chat IA"} onClick={()=>setAiOpen(o=>!o)}
             style={{padding:"6px 12px",borderRadius:7,background:aiOpen?A.accentBg:"transparent",border:`1px solid ${aiOpen?A.accentLight:A.border2}`,color:aiOpen?A.accent:A.textMuted,fontSize:9,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,transition:"all 0.15s"}}
             onMouseEnter={e=>{e.currentTarget.style.borderColor=A.accent;e.currentTarget.style.color=A.accent;e.currentTarget.style.background=A.accentBg;}}
             onMouseLeave={e=>{e.currentTarget.style.borderColor=aiOpen?A.accentLight:A.border2;e.currentTarget.style.color=aiOpen?A.accent:A.textMuted;e.currentTarget.style.background=aiOpen?A.accentBg:"transparent";}}>
@@ -2809,8 +2809,8 @@ export default function PBIDesigner(){
                   ⊞ Solo ajustar desbordados
                 </button>
               </div>
-              <button type="button" onClick={()=>setResizePrompt(null)}
-                style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:A.warning,fontSize:15,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+              <button type="button" aria-label="Cerrar aviso de redimensión" onClick={()=>setResizePrompt(null)}
+                style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:A.warning,fontSize:15,cursor:"pointer",padding:"4px 8px",lineHeight:1,minWidth:32,minHeight:32,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
             </div>
           )}
         <div
@@ -2935,7 +2935,7 @@ export default function PBIDesigner(){
                 {atts.map((a,i)=>(
                   <div key={i} style={{display:"flex",alignItems:"center",gap:4,padding:"2px 7px",background:A.accentBg,borderRadius:5,border:`1px solid ${A.accentLight}`}}>
                     <span style={{fontSize:8,color:A.accent,fontFamily:"monospace"}}>{fileIcon(a.name)} {a.name.slice(0,14)}</span>
-                    <span onClick={()=>setAtts(a=>a.filter((_,j)=>j!==i))} style={{fontSize:11,color:A.danger,cursor:"pointer",lineHeight:1}}>×</span>
+                    <button type="button" aria-label={`Eliminar adjunto ${a.name}`} onClick={()=>setAtts(a=>a.filter((_,j)=>j!==i))} style={{fontSize:11,color:A.danger,cursor:"pointer",lineHeight:1,background:"none",border:"none",padding:"0 2px"}}>×</button>
                   </div>
                 ))}
               </div>
@@ -3506,14 +3506,14 @@ function NavBuilderPanel({nav:rawNav,setNav,activeTab,setActiveTab,A,IS,LS,ct}){
                   </button>
                   {iconPicker===i&&(
                     <>
-                      <div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>setIconPicker(null)}/>
+                      <div aria-hidden="true" style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>setIconPicker(null)}/>
                       <div style={{position:"absolute",top:"110%",left:0,zIndex:200,
                         width:208,padding:6,background:A.surface,border:`1px solid ${acc}`,
                         borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",
                         display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:2,
                         maxHeight:160,overflowY:"auto"}}>
                         {NAV_ICONS.map(ic=>(
-                          <button key={ic} type="button"
+                          <button key={ic} type="button" aria-label={`Icono ${ic}`}
                             onClick={()=>{setNav(n=>({...n,pages:n.pages.map((x,j)=>j===i?{...x,icon:ic}:x)}));setIconPicker(null);}}
                             style={{border:"none",background:p.icon===ic?acBg:"transparent",
                               borderRadius:4,cursor:"pointer",fontSize:14,padding:"3px 0",

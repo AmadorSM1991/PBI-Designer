@@ -222,8 +222,8 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
   }
 
   try {
-    // 1. Verificar créditos suficientes
-    if (req.user.credits <= 0) {
+    // 1. Verificar créditos suficientes (mínimo 50 para intentar la operación)
+    if (req.user.credits < 50) {
       return res.status(402).json({
         error: 'Créditos insuficientes',
         creditsBalance: req.user.credits
@@ -292,14 +292,17 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
     const tokensUsed = data.usage?.total_tokens || Math.ceil((JSON.stringify(groqMessages).length + rawText.length) / 4);
 
     // 6. Descontar créditos en Supabase
+    // .gte('credits', tokensUsed) actúa como guardia atómica contra race conditions
+    const newCredits = Math.max(0, req.user.credits - tokensUsed);
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ credits: req.user.credits - tokensUsed })
-      .eq('id', userId);
+      .update({ credits: newCredits })
+      .eq('id', userId)
+      .gte('credits', tokensUsed);
 
     if (updateError) {
       console.error('❌ Error actualizando créditos:', updateError);
-      // No interrumpimos el flujo
+      // No interrumpimos el flujo — la respuesta ya fue generada
     }
 
     // 7. Registrar consumo (opcional)
@@ -402,7 +405,7 @@ app.post('/api/suggest', aiLimiter, authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Se requiere "design.elements" como array.' });
   }
 
-  if (req.user.credits <= 0) {
+  if (req.user.credits < 50) {
     return res.status(402).json({ error: 'Créditos insuficientes', creditsBalance: req.user.credits });
   }
 
@@ -460,13 +463,15 @@ Proporciona sugerencias concretas sobre disposición, elementos faltantes, color
     }
 
     const tokensUsed = data.usage?.total_tokens || Math.ceil((prompt.length + suggestions.length) / 4);
+    const newCredits = Math.max(0, req.user.credits - tokensUsed);
     const { error: updateError } = await supabase
       .from('profiles')
-      .update({ credits: req.user.credits - tokensUsed })
-      .eq('id', req.user.id);
+      .update({ credits: newCredits })
+      .eq('id', req.user.id)
+      .gte('credits', tokensUsed);
     if (updateError) console.error('❌ Error actualizando créditos (suggest):', updateError);
 
-    res.json({ suggestions, creditsUsed: tokensUsed, creditsRemaining: req.user.credits - tokensUsed });
+    res.json({ suggestions, creditsUsed: tokensUsed, creditsRemaining: newCredits });
 
   } catch (error) {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {
