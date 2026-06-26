@@ -86,6 +86,9 @@ Ejemplo de layout correcto:
 {"id":3,"type":"bar","x":198,"y":162,"w":370,"h":210,"label":"Ventas por Región"},
 {"id":4,"type":"line","x":576,"y":162,"w":376,"h":210,"label":"Tendencia Mensual"}]}
 </LAYOUT>`;
+
+const SUGGEST_SYS = 'Eres un experto en diseño de dashboards de Power BI. Responde siempre en español con sugerencias concretas y accionables, usando viñetas (•). Sé directo y específico.';
+
 // -------------------------------------------------------------------
 // Endpoint simple de login (por si authRoutes no lo tiene aún)
 // -------------------------------------------------------------------
@@ -107,16 +110,20 @@ app.post('/api/dev/add-credits', (req, res, next) => {
   next();
 }, async (req, res) => {
   const DEV_USER_ID = '93fa7701-f2cd-4eb3-ae8a-3a174f3cbbe2';
-  const amount = req.body?.amount || 500000;
+  const rawAmount = Number(req.body?.amount) || 500000;
+  const amount = Math.max(1, Math.min(rawAmount, 10_000_000));
   try {
+    const { data: current, error: fetchErr } = await supabase
+      .from('profiles').select('credits').eq('id', DEV_USER_ID).single();
+    if (fetchErr) throw fetchErr;
     const { data, error } = await supabase
       .from('profiles')
-      .update({ credits: amount })
+      .update({ credits: (current.credits || 0) + amount })
       .eq('id', DEV_USER_ID)
       .select('id, credits')
       .single();
     if (error) throw error;
-    res.json({ success: true, credits: data.credits, message: `Créditos recargados a ${data.credits}` });
+    res.json({ success: true, credits: data.credits, message: `+${amount} créditos → total ${data.credits}` });
   } catch (err) {
     console.error('❌ Error recargando créditos:', err);
     res.status(500).json({ error: 'Error interno del servidor.' });
@@ -234,24 +241,31 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
     console.log('📤 Enviando a Gemini...');
 
     // 3. Llamar a Gemini — con fallback automático si el modelo principal falla
-    const GEMINI_MODELS = ['gemini-2.5-flash-preview-05-20', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
     let response, data, usedModel;
     for (const model of GEMINI_MODELS) {
       console.log(`📤 Intentando con modelo: ${model}`);
-      response = await fetch(GEMINI_URL, {
-        method: 'POST',
-        signal: AbortSignal.timeout(30000),
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
-        body: JSON.stringify({ model, messages: groqMessages, temperature: 0.3, max_tokens: 4000 })
-      });
+      try {
+        response = await fetch(GEMINI_URL, {
+          method: 'POST',
+          signal: AbortSignal.timeout(30000),
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
+          body: JSON.stringify({ model, messages: groqMessages, temperature: 0.3, max_tokens: 4000 })
+        });
+      } catch (fetchErr) {
+        console.warn(`⚠️ ${model} error de red (${fetchErr.name}), probando siguiente...`);
+        continue;
+      }
       data = await response.json();
       const geminiErr = Array.isArray(data) ? data[0]?.error : data?.error;
       if (response.ok) { usedModel = model; break; }
-      if (geminiErr?.code === 503 || geminiErr?.status === 'UNAVAILABLE' || response.status === 503) {
-        console.warn(`⚠️ ${model} no disponible (503), probando siguiente modelo...`);
-        continue; // probar el siguiente
+      // 503 (sobrecarga) o 404 (modelo no disponible) → intentar siguiente
+      if (response.status === 503 || response.status === 404 ||
+          geminiErr?.code === 503 || geminiErr?.status === 'UNAVAILABLE') {
+        console.warn(`⚠️ ${model} no disponible (${response.status}), probando siguiente modelo...`);
+        continue;
       }
       if (response.status === 429) {
         return res.status(429).json({ error: '⏳ Límite de Gemini alcanzado. Espera 1 minuto e intenta de nuevo.', retryAfter: 60, limit: 15 });
@@ -267,7 +281,11 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
     console.log(`✅ Usando modelo: ${usedModel}`);
 
     // 4. Extraer texto de la respuesta
-    const rawText = data.choices[0].message.content;
+    const rawText = data.choices?.[0]?.message?.content;
+    if (!rawText) {
+      console.error('❌ Respuesta vacía de Gemini:', JSON.stringify(data).substring(0, 200));
+      return res.status(503).json({ error: '⏳ El modelo devolvió una respuesta vacía. Intenta de nuevo.' });
+    }
     console.log('📝 Respuesta de Gemini (primeros 300 chars):', rawText.substring(0, 300));
 
     // 5. Calcular tokens usados (Groq devuelve usage.total_tokens)
@@ -384,8 +402,12 @@ app.post('/api/suggest', aiLimiter, authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Se requiere "design.elements" como array.' });
   }
 
+  if (req.user.credits <= 0) {
+    return res.status(402).json({ error: 'Créditos insuficientes', creditsBalance: req.user.credits });
+  }
+
   try {
-    const prompt = `Como experto en diseño de dashboards de Power BI, analiza este layout y sugiere 3-5 mejoras específicas.
+    const prompt = `Analiza este layout de dashboard de Power BI y sugiere 3-5 mejoras específicas.
 
 TEMA ACTUAL: ${theme?.name || 'PBI Designer'} (${theme?.accent || '#2563eb'})
 
@@ -396,21 +418,35 @@ ${design.elements.map(e =>
 
 Proporciona sugerencias concretas sobre disposición, elementos faltantes, colores, jerarquía visual y flujo de lectura. Solo texto en español, con viñetas claras.`;
 
-    const GEMINI_MODELS = ['gemini-2.5-flash-preview-05-20', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+    const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
     const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions';
 
     let response, data;
     for (const model of GEMINI_MODELS) {
-      response = await fetch(GEMINI_URL, {
-        method: 'POST',
-        signal: AbortSignal.timeout(20000),
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
-        body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 1, max_tokens: 1000 })
-      });
+      try {
+        response = await fetch(GEMINI_URL, {
+          method: 'POST',
+          signal: AbortSignal.timeout(20000),
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: SUGGEST_SYS },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 1000
+          })
+        });
+      } catch (fetchErr) {
+        console.warn(`⚠️ ${model} error de red (${fetchErr.name}), probando siguiente...`);
+        continue;
+      }
       data = await response.json();
       const geminiErr = Array.isArray(data) ? data[0]?.error : data?.error;
       if (response.ok) break;
-      if (geminiErr?.code === 503 || geminiErr?.status === 'UNAVAILABLE' || response.status === 503) continue;
+      if (response.status === 503 || response.status === 404 ||
+          geminiErr?.code === 503 || geminiErr?.status === 'UNAVAILABLE') continue;
       throw new Error(geminiErr?.message || `Error Gemini HTTP ${response.status}`);
     }
 
@@ -418,8 +454,19 @@ Proporciona sugerencias concretas sobre disposición, elementos faltantes, color
       return res.status(503).json({ error: '⏳ Todos los modelos de Gemini están con alta demanda. Espera unos segundos.' });
     }
 
-    const suggestions = data.choices[0].message.content;
-    res.json({ suggestions });
+    const suggestions = data.choices?.[0]?.message?.content;
+    if (!suggestions) {
+      return res.status(503).json({ error: '⏳ El modelo devolvió una respuesta vacía. Intenta de nuevo.' });
+    }
+
+    const tokensUsed = data.usage?.total_tokens || Math.ceil((prompt.length + suggestions.length) / 4);
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ credits: req.user.credits - tokensUsed })
+      .eq('id', req.user.id);
+    if (updateError) console.error('❌ Error actualizando créditos (suggest):', updateError);
+
+    res.json({ suggestions, creditsUsed: tokensUsed, creditsRemaining: req.user.credits - tokensUsed });
 
   } catch (error) {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') {

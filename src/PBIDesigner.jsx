@@ -11,7 +11,7 @@ const APP_THEMES = {
     border:"#e2e8f0", border2:"#cbd5e1",
     text:"#1e293b", textMuted:"#64748b", textLight:"#94a3b8",
     accent:"#2563eb", accentBg:"#eff6ff", accentLight:"#dbeafe",
-    success:"#059669", danger:"#dc2626",
+    success:"#059669", danger:"#dc2626", warning:"#d97706",
     bubbleUser:"#eff6ff", bubbleAI:"#f8fafc", inputBg:"#f8fafc",
   },
   slate:  { id:"slate",  icon:"🌑",  name:"Dark",
@@ -19,7 +19,7 @@ const APP_THEMES = {
     border:"#334155", border2:"#475569",
     text:"#f1f5f9", textMuted:"#94a3b8", textLight:"#64748b",
     accent:"#38bdf8", accentBg:"#0c2d4a", accentLight:"#0369a1",
-    success:"#34d399", danger:"#f87171",
+    success:"#34d399", danger:"#f87171", warning:"#fbbf24",
     bubbleUser:"#0c2d4a", bubbleAI:"#1e293b", inputBg:"#0f172a",
   },
   navy:   { id:"navy",   icon:"🌊",  name:"Navy",
@@ -27,7 +27,7 @@ const APP_THEMES = {
     border:"#1a2e50", border2:"#243d65",
     text:"#e0eaff", textMuted:"#7aa3d4", textLight:"#4a6080",
     accent:"#3b82f6", accentBg:"#1a2d50", accentLight:"#1d3a6b",
-    success:"#34d399", danger:"#f87171",
+    success:"#34d399", danger:"#f87171", warning:"#fbbf24",
     bubbleUser:"#1a2d50", bubbleAI:"#0e1e3a", inputBg:"#060e1c",
   },
 };
@@ -963,7 +963,7 @@ function ScatterViz({el,ct}){
     <div style={{width:"100%",height:"100%",background:ct.cardBg,border:`1px solid ${ct.cardBorder}`,borderRadius:ct.r,padding:"10px 12px",overflow:"hidden",boxSizing:"border-box",display:"flex",flexDirection:"column"}}>
       <div style={{fontSize:10,fontWeight:700,color:ct.text,marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontFamily:"'Segoe UI',sans-serif"}}>{el.label}</div>
       <div style={{flex:1,minHeight:0}}>
-        <svg width="100%" height="100%" viewBox="0 0 100 80" preserveAspectRatio="none">
+        <svg width="100%" height="100%" viewBox="0 0 100 80" preserveAspectRatio="xMidYMid meet">
           <line x1="8" y1="72" x2="96" y2="72" stroke={ct.cardBorder} strokeWidth="0.5"/>
           <line x1="8" y1="8" x2="8" y2="72" stroke={ct.cardBorder} strokeWidth="0.5"/>
           {pts.map(([x,y],i)=><circle key={i} cx={8+x*0.88} cy={y} r="2.5" fill={rgba(ct.accent,0.7)}/>)}
@@ -1842,7 +1842,7 @@ export default function PBIDesigner(){
     },3000);
     return()=>clearTimeout(autoSaveTimer.current);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[els,ct,hdrCfg,navCfg,canvasSize,customW,customH]);
+  },[histIdx,ct,navCfg,hdrCfg,canvasSize,customW,customH]);
 
   // Cargar temas guardados desde storage al iniciar
   useEffect(()=>{
@@ -1940,7 +1940,7 @@ export default function PBIDesigner(){
       if(!r.ok)return null;
       const data=await r.json();
       return(data.designs||[]).map((d,i)=>({
-        id:"cloud_"+i+"_"+Date.now(),
+        id:d.id||("cloud_"+i),
         name:d.layout?.name||`Diseño nube ${i+1}`,
         date:new Date(d.created_at).toLocaleDateString("es"),
         els:d.layout?.els||[],
@@ -1962,6 +1962,7 @@ export default function PBIDesigner(){
   const[atts,setAtts]=useState([]);
   const[auditResult,setAuditResult]=useState(null); // resultado del último audit
   const[dragStatus,setDragStatus]=useState(null);
+  const dragRafRef=useRef(null);
 
   const canvasRef=useRef(null);
   const chatEndRef=useRef(null);
@@ -2091,7 +2092,10 @@ export default function PBIDesigner(){
   // ── UPDATE / COMMIT ──
   const updateEl=useCallback((id,patch)=>{
     setEls(a=>a.map(e=>e.id===id?{...e,...patch}:e));
-    setDragStatus(s=>{const base=s||{};return{...base,...patch};});
+    if(dragRafRef.current)cancelAnimationFrame(dragRafRef.current);
+    dragRafRef.current=requestAnimationFrame(()=>{
+      setDragStatus(s=>{const base=s||{};return{...base,...patch};});
+    });
   },[]);
   const commitEl=useCallback(()=>{
     setDragStatus(null);
@@ -2439,8 +2443,8 @@ export default function PBIDesigner(){
             <span style={{fontSize:8,color:A.textMuted}}>×</span>
             <div style={{position:"relative",display:"inline-flex",alignItems:"center"}}>
               <div style={{position:"absolute",left:4,display:"flex",flexDirection:"row",alignItems:"center",gap:1,pointerEvents:"none",lineHeight:1}}>
-                <span style={{fontSize:9,fontWeight:800,color:"#d97706",fontFamily:"monospace"}}>H</span>
-                <span style={{fontSize:8,color:"#d97706"}}>↕</span>
+                <span style={{fontSize:9,fontWeight:800,color:A.warning,fontFamily:"monospace"}}>H</span>
+                <span style={{fontSize:8,color:A.warning}}>↕</span>
               </div>
               <input type="number" value={draftH} onChange={e=>setDraftH(+e.target.value)}
                 onKeyDown={e=>{if(e.key==="Enter")applyCustomSize();}}
@@ -2784,29 +2788,29 @@ export default function PBIDesigner(){
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
           {/* Banner de auto-ajuste al cambiar tamaño */}
           {resizePrompt&&(
-            <div style={{padding:"10px 16px",background:"#fffbeb",borderBottom:"1px solid #fcd34d",
+            <div style={{padding:"10px 16px",background:`${A.warning}18`,borderBottom:`1px solid ${A.warning}`,
               display:"flex",flexDirection:"column",gap:8,flexShrink:0,zIndex:50,position:"relative"}}>
               <div style={{display:"flex",alignItems:"flex-start",gap:8,paddingRight:20}}>
                 <span style={{fontSize:14,flexShrink:0}}>📐</span>
-                <span style={{fontSize:10,color:"#92400e",lineHeight:1.5}}>
+                <span style={{fontSize:10,color:A.text,lineHeight:1.5}}>
                   Canvas cambió de {resizePrompt.oldW}×{resizePrompt.oldH} a {CW}×{CH}.
                   {resizePrompt.hasOverflow?" Hay elementos fuera del lienzo.":""} ¿Cómo ajustar los elementos?
                 </span>
               </div>
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <button type="button" onClick={scaleAllElements}
-                  style={{padding:"6px 14px",borderRadius:6,background:"#d97706",border:"none",
+                  style={{padding:"6px 14px",borderRadius:6,background:A.warning,border:"none",
                     color:"#fff",fontSize:9.5,fontWeight:700,cursor:"pointer",flexShrink:0}}>
                   ⤢ Escalar todo proporcionalmente
                 </button>
                 <button type="button" onClick={clampOverflowElements}
-                  style={{padding:"6px 14px",borderRadius:6,background:"#fff",border:"1px solid #d97706",
-                    color:"#92400e",fontSize:9.5,fontWeight:600,cursor:"pointer",flexShrink:0}}>
+                  style={{padding:"6px 14px",borderRadius:6,background:A.surface,border:`1px solid ${A.warning}`,
+                    color:A.warning,fontSize:9.5,fontWeight:600,cursor:"pointer",flexShrink:0}}>
                   ⊞ Solo ajustar desbordados
                 </button>
               </div>
               <button type="button" onClick={()=>setResizePrompt(null)}
-                style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:"#92400e",fontSize:15,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
+                style={{position:"absolute",top:8,right:10,background:"none",border:"none",color:A.warning,fontSize:15,cursor:"pointer",padding:0,lineHeight:1}}>×</button>
             </div>
           )}
         <div
@@ -3340,6 +3344,12 @@ function NavBuilderPanel({nav:rawNav,setNav,activeTab,setActiveTab,A,IS,LS,ct}){
   const updColor=patch=>setNav(n=>({...n,colors:{...NAV_DEFAULT.colors,...(n.colors||{}),...patch}}));
   const acc=A.accent,acBg=A.accentBg,acL=A.accentLight;
   const[iconPicker,setIconPicker]=useState(null); // índice de página con picker abierto
+  useEffect(()=>{
+    if(iconPicker===null)return;
+    const onKey=e=>{if(e.key==="Escape")setIconPicker(null);};
+    document.addEventListener("keydown",onKey);
+    return()=>document.removeEventListener("keydown",onKey);
+  },[iconPicker]);
 
   // Preview del nav
   const actIdx=(()=>{const i=nav.pages.findIndex(p=>p.active);return i>=0?i:0;})();
@@ -3495,23 +3505,26 @@ function NavBuilderPanel({nav:rawNav,setNav,activeTab,setActiveTab,A,IS,LS,ct}){
                     {p.icon}
                   </button>
                   {iconPicker===i&&(
-                    <div style={{position:"absolute",top:"110%",left:0,zIndex:200,
-                      width:208,padding:6,background:A.surface,border:`1px solid ${acc}`,
-                      borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",
-                      display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:2,
-                      maxHeight:160,overflowY:"auto"}}>
-                      {NAV_ICONS.map(ic=>(
-                        <button key={ic} type="button"
-                          onClick={()=>{setNav(n=>({...n,pages:n.pages.map((x,j)=>j===i?{...x,icon:ic}:x)}));setIconPicker(null);}}
-                          style={{border:"none",background:p.icon===ic?acBg:"transparent",
-                            borderRadius:4,cursor:"pointer",fontSize:14,padding:"3px 0",
-                            transition:"background 0.1s"}}
-                          onMouseEnter={e=>e.currentTarget.style.background=acBg}
-                          onMouseLeave={e=>e.currentTarget.style.background=p.icon===ic?acBg:"transparent"}>
-                          {ic}
-                        </button>
-                      ))}
-                    </div>
+                    <>
+                      <div style={{position:"fixed",inset:0,zIndex:199}} onClick={()=>setIconPicker(null)}/>
+                      <div style={{position:"absolute",top:"110%",left:0,zIndex:200,
+                        width:208,padding:6,background:A.surface,border:`1px solid ${acc}`,
+                        borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",
+                        display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:2,
+                        maxHeight:160,overflowY:"auto"}}>
+                        {NAV_ICONS.map(ic=>(
+                          <button key={ic} type="button"
+                            onClick={()=>{setNav(n=>({...n,pages:n.pages.map((x,j)=>j===i?{...x,icon:ic}:x)}));setIconPicker(null);}}
+                            style={{border:"none",background:p.icon===ic?acBg:"transparent",
+                              borderRadius:4,cursor:"pointer",fontSize:14,padding:"3px 0",
+                              transition:"background 0.1s"}}
+                            onMouseEnter={e=>e.currentTarget.style.background=acBg}
+                            onMouseLeave={e=>e.currentTarget.style.background=p.icon===ic?acBg:"transparent"}>
+                            {ic}
+                          </button>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
                 <input value={p.label} onChange={e=>setNav(n=>({...n,pages:n.pages.map((x,j)=>j===i?{...x,label:e.target.value}:x)}))}
