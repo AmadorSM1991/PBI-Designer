@@ -2330,7 +2330,12 @@ export default function PBIDesigner(){
 
   return !user ? <LoginScreen onLogin={handleLogin}/> : (
     <div style={{width:"100vw",height:"100vh",background:A.bg,display:"flex",flexDirection:"column",fontFamily:"'Segoe UI',system-ui,sans-serif",color:A.text,position:"relative"}}>
-      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+      <style>{`
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+        *:focus-visible{outline:2px solid ${A.accent};outline-offset:2px;border-radius:4px;}
+        @media(max-width:1100px){.pbi-toolbar-canvas-size{display:none!important;}}
+        @media(max-width:900px){.pbi-toolbar-theme-ui{display:none!important;}}
+      `}</style>
 
       {/* ══ TOPBAR ══════════════════════════════════════════════════ */}
       <div style={{minHeight:54,background:A.topbar,borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",padding:"0 14px",gap:6,zIndex:1000,flexShrink:0,boxShadow:`0 2px 20px ${rgba(A.accent,0.08)},0 1px 0 ${A.border}`,flexWrap:"wrap",rowGap:4}}>
@@ -2347,7 +2352,7 @@ export default function PBIDesigner(){
         <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
 
         {/* ─── Tema UI ────────────────────────────────────────────── */}
-        <div style={{display:"flex",alignItems:"center",gap:3,background:A.surface,borderRadius:8,padding:"3px 7px",border:`1px solid ${A.border}`,flexShrink:0}}>
+        <div className="pbi-toolbar-theme-ui" style={{display:"flex",alignItems:"center",gap:3,background:A.surface,borderRadius:8,padding:"3px 7px",border:`1px solid ${A.border}`,flexShrink:0}}>
           <span style={{fontSize:7,color:A.textMuted,fontFamily:"monospace",letterSpacing:0.8,textTransform:"uppercase",marginRight:2}}>UI</span>
           {Object.values(APP_THEMES).map(t=>(
             <button key={t.id} onClick={()=>setAppThemeId(t.id)} title={t.name}
@@ -2396,14 +2401,14 @@ export default function PBIDesigner(){
           </button>
         </div>
         {viewMode==="mobile"&&(
-          <button onClick={regenerateMobile} title="Regenerar vista móvil"
+          <button onClick={regenerateMobile} title="Regenerar vista móvil" aria-label="Regenerar vista móvil"
             style={{...B({fontSize:11,padding:"0 8px",height:26,flexShrink:0}),borderRadius:7}}>🔄</button>
         )}
 
         <div style={{width:1,height:28,background:A.border,flexShrink:0,margin:"0 2px"}}/>
 
         {/* ─── Canvas ─────────────────────────────────────────────── */}
-        <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+        <div className="pbi-toolbar-canvas-size" style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
           <span style={{fontSize:7,color:A.textMuted,fontFamily:"monospace",letterSpacing:0.8,textTransform:"uppercase"}}>Canvas</span>
           {viewMode==="mobile"?(
             <div title="En vista móvil el ancho es fijo (900px, estándar Power BI Mobile). La altura se ajusta al contenido."
@@ -3120,9 +3125,9 @@ export default function PBIDesigner(){
       )}
       {/* ══ CONFIRMAR NUEVO LIENZO ══════════════════════════════════ */}
       {confirmNew&&(
-        <div onClick={()=>setConfirmNew(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:14,width:380,maxWidth:"92vw",padding:"22px",boxShadow:"0 30px 80px rgba(0,0,0,0.4)"}}>
-            <div style={{fontSize:15,fontWeight:700,color:A.text,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>📊 Nuevo lienzo</div>
+        <div aria-hidden="true" onClick={()=>setConfirmNew(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div role="dialog" aria-modal="true" aria-labelledby="dlg-new-title" onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:14,width:380,maxWidth:"92vw",padding:"22px",boxShadow:"0 30px 80px rgba(0,0,0,0.4)"}}>
+            <div id="dlg-new-title" style={{fontSize:15,fontWeight:700,color:A.text,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>📊 Nuevo lienzo</div>
             <div style={{fontSize:11,color:A.textSub,lineHeight:1.6,marginBottom:18}}>
               Se limpiarán los {els.length} elementos del canvas actual para empezar un dashboard nuevo. Podrás deshacerlo con Ctrl+Z.
             </div>
@@ -3171,11 +3176,11 @@ function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClo
   const allDesigns=tab==="local"?savedDesigns:cloudDesigns;
 
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:680,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
+    <div aria-hidden="true" onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div role="dialog" aria-modal="true" aria-labelledby="dlg-versions-title" onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:680,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
         <div style={{padding:"14px 20px",borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:A.text}}>📂 Mis diseños</div>
+            <div id="dlg-versions-title" style={{fontSize:14,fontWeight:700,color:A.text}}>📂 Mis diseños</div>
             <div style={{fontSize:9,color:A.textMuted,marginTop:1}}>Guarda y recupera tus dashboards — también sincroniza con la nube</div>
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:A.textMuted,fontSize:18}}>×</button>
@@ -3254,9 +3259,9 @@ function VersionsModal({A,savedDesigns,currentCount,onSave,onLoad,onDelete,onClo
         </div>
       </div>
       {confirmLoad&&(
-        <div onClick={()=>setConfirmLoad(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:12,padding:"20px 24px",width:340,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
-            <div style={{fontSize:13,fontWeight:700,color:A.text,marginBottom:6}}>¿Cargar diseño?</div>
+        <div aria-hidden="true" onClick={()=>setConfirmLoad(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:10001,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div role="dialog" aria-modal="true" aria-labelledby="dlg-load-title" onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:12,padding:"20px 24px",width:340,boxShadow:"0 20px 60px rgba(0,0,0,0.3)"}}>
+            <div id="dlg-load-title" style={{fontSize:13,fontWeight:700,color:A.text,marginBottom:6}}>¿Cargar diseño?</div>
             <div style={{fontSize:10,color:A.textMuted,lineHeight:1.6,marginBottom:16}}>
               Se perderán los cambios sin guardar del canvas actual.<br/>
               <b style={{color:A.text}}>"{confirmLoad.name}"</b> reemplazará el diseño actual.
@@ -3299,11 +3304,11 @@ function ThemeLibraryModal({A,ct,brandThemes,savedThemes,onApply,onSave,onDelete
     </div>
   );
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:660,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
+    <div aria-hidden="true" onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div role="dialog" aria-modal="true" aria-labelledby="dlg-theme-title" onClick={e=>e.stopPropagation()} style={{background:A.surface,border:`1px solid ${A.border}`,borderRadius:16,width:660,maxWidth:"94vw",maxHeight:"88vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
         <div style={{padding:"14px 20px",borderBottom:`1px solid ${A.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div>
-            <div style={{fontSize:14,fontWeight:700,color:A.text}}>🎨 Biblioteca de temas</div>
+            <div id="dlg-theme-title" style={{fontSize:14,fontWeight:700,color:A.text}}>🎨 Biblioteca de temas</div>
             <div style={{fontSize:9,color:A.textMuted,marginTop:1}}>Aplica una paleta de marca al diseño actual (solo cambia colores, no el layout)</div>
           </div>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:A.textMuted,fontSize:18}}>×</button>
@@ -4054,9 +4059,9 @@ HOW TO USE:
   const ready=blobUrl&&blobName===cur.label;
 
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",
+    <div aria-hidden="true" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",
       display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999}}>
-      <div style={{background:A.surface,border:`1px solid ${A.border}`,
+      <div role="dialog" aria-modal="true" aria-labelledby="dlg-export-title" style={{background:A.surface,border:`1px solid ${A.border}`,
         borderRadius:16,width:720,maxWidth:"94vw",maxHeight:"88vh",display:"flex",
         flexDirection:"column",overflow:"hidden",
         boxShadow:"0 40px 100px rgba(0,0,0,0.35)"}}>
@@ -4065,7 +4070,7 @@ HOW TO USE:
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
           padding:"18px 24px 14px",borderBottom:`1px solid ${A.border}`,flexShrink:0}}>
           <div>
-            <div style={{fontSize:15,fontWeight:800,color:A.text}}>{T("Exportar a Power BI","Export to Power BI")}</div>
+            <div id="dlg-export-title" style={{fontSize:15,fontWeight:800,color:A.text}}>{T("Exportar a Power BI","Export to Power BI")}</div>
             <div style={{fontSize:9,color:A.textMuted,marginTop:3}}>
               {T("Selecciona archivo · cópialo o genera el link de descarga directa","Pick a file · copy it or generate the direct download link")}
             </div>
