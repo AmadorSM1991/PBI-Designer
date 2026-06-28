@@ -252,7 +252,7 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
           method: 'POST',
           signal: AbortSignal.timeout(30000),
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GEMINI_API_KEY}` },
-          body: JSON.stringify({ model, messages: groqMessages, temperature: 0.3, max_tokens: 4000 })
+          body: JSON.stringify({ model, messages: groqMessages, temperature: 0.3, max_tokens: 8192 })
         });
       } catch (fetchErr) {
         console.warn(`⚠️ ${model} error de red (${fetchErr.name}), probando siguiente...`);
@@ -368,6 +368,11 @@ app.post('/api/generate', aiLimiter, authMiddleware, async (req, res) => {
           console.error('❌ Error parseando JSON directo:', e.message);
         }
       }
+    }
+
+    // Limpiar etiqueta <LAYOUT> sin cerrar (respuesta truncada por límite de tokens)
+    if (cleanText.includes('<LAYOUT>') && !cleanText.includes('</LAYOUT>')) {
+      cleanText = cleanText.replace(/<LAYOUT>[\s\S]*/i, '').trim();
     }
 
     // Si se encontró un layout, normalizarlo (mapear tipos y atributos)

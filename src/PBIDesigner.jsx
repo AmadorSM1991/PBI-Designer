@@ -564,6 +564,10 @@ async function callAI(msgs,cw=960,ch=580,currentState=null){
     }
     // Si aún hay <LAYOUT> en el texto (parse falló), quitarlo para no mostrarlo al usuario
     cleanText=cleanText.replace(/<LAYOUT>[\s\S]*?<\/LAYOUT>/gi,'').trim();
+    // Etiqueta sin cerrar (respuesta truncada) — quitar desde <LAYOUT> hasta el final
+    if(cleanText.includes('<LAYOUT>')&&!cleanText.toLowerCase().includes('</layout>')){
+      cleanText=cleanText.replace(/<LAYOUT>[\s\S]*/i,'').trim();
+    }
 
     // Detectar bloque <AUDIT>
     const auditM=cleanText.match(/<audit>([\s\S]*?)<\/audit>/i);
@@ -2220,7 +2224,8 @@ export default function PBIDesigner(){
         colors:{...NAV_DEFAULT.colors,...(n.colors||{}),...(layout.navConfig.colors||{})},
         pages:layout.navConfig.pages||n.pages||NAV_DEFAULT.pages}));
     }
-    setMsgs(m=>[...m,{role:"ai",text:aiText||"Diseño aplicado en el canvas."}]);
+    const chatMsg=(layout&&useOverride)?"✅ Mejoras aplicadas en el canvas.":(aiText||"Diseño aplicado en el canvas.");
+    setMsgs(m=>[...m,{role:"ai",text:chatMsg}]);
     }finally{setLoading(false);}
   };
 
@@ -3517,8 +3522,9 @@ function NavBuilderPanel({nav:rawNav,setNav,activeTab,setActiveTab,A,IS,LS,ct}){
                         borderRadius:8,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",
                         display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:2,
                         maxHeight:160,overflowY:"auto"}}>
-                        {NAV_ICONS.map(ic=>(
+                        {NAV_ICONS.map((ic,idx)=>(
                           <button key={ic} type="button" aria-label={`Icono ${ic}`}
+                            autoFocus={idx===0}
                             onClick={()=>{setNav(n=>({...n,pages:n.pages.map((x,j)=>j===i?{...x,icon:ic}:x)}));setIconPicker(null);}}
                             style={{border:"none",background:p.icon===ic?acBg:"transparent",
                               borderRadius:4,cursor:"pointer",fontSize:14,padding:"3px 0",
